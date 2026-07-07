@@ -1,24 +1,47 @@
 {
   "expo": {
-    "name": "olympy_mobile_rn",
+    "name": "Olympy",
     "slug": "olympy_mobile_rn",
     "version": "1.0.0",
+    "scheme": "olympy",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "backgroundColor": "#F4FBF8",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "uz.prolymp.olympy"
     },
     "android": {
+      "package": "uz.prolymp.olympy",
+      "versionCode": 1,
+      "permissions": [],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "monochromeImage": "./assets/android-icon-monochrome.png",
+        "backgroundColor": "#FFFFFF"
       }
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#F4FBF8"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Olympy profil rasmingizni yuklash uchun galereyaga ruxsat so'raydi."
+        }
+      ]
+    ]
   }
 }
