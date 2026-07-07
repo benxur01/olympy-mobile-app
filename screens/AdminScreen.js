@@ -24,6 +24,7 @@ import {
   LockIcon,
   CheckIcon,
   LogoutIcon,
+  UserIcon,
 } from '../components/icons/Icons';
 import { useAuth } from '../services/AuthContext';
 
@@ -226,6 +227,15 @@ export default function AdminScreen({ navigation }) {
             size={11.5}
             style={styles.adminBadge}
           />
+          <TouchableOpacity
+            activeOpacity={0.7}
+            style={styles.logoutBtn}
+            onPress={() => navigation.navigate('Profile')}
+            accessibilityRole="button"
+            accessibilityLabel="Profil"
+          >
+            <UserIcon size={18} color={colors.textSecondary} />
+          </TouchableOpacity>
           <TouchableOpacity
             activeOpacity={0.7}
             style={styles.logoutBtn}

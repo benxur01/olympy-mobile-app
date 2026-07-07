@@ -29,6 +29,7 @@ import {
   BookIcon,
   SettingsIcon,
   ProfileBadgeIcon,
+  UserIcon,
 } from '../components/icons/Icons';
 
 const asArray = (data) => (Array.isArray(data) ? data : data?.results || []);
@@ -112,6 +113,7 @@ export default function TeacherHomeScreen({ navigation }) {
     { label: 'Tadbir yaratish', icon: <PlusIcon size={16} color={colors.blue} />, onPress: () => navigation.navigate('CreateOlympiad') },
     { label: 'Barcha tadbirlar', icon: <CalendarIcon size={18} color={colors.textSecondary} strokeWidth={2} />, onPress: () => navigation.navigate('TeacherOlympiads') },
     { label: 'Savol banki', icon: <BookIcon size={18} color={colors.textSecondary} />, onPress: () => navigation.navigate('Savollar') },
+    { label: 'Profil', icon: <UserIcon size={18} color={colors.textSecondary} />, onPress: () => navigation.navigate('Profile') },
     { label: 'Parolni o\'zgartirish', icon: <SettingsIcon size={18} color={colors.textSecondary} />, onPress: () => navigation.navigate('ChangePassword') },
     { label: 'Hisobdan chiqish', icon: <ProfileBadgeIcon size={18} color={colors.red} />, danger: true, onPress: async () => { await logout(); navigation.reset({ index: 0, routes: [{ name: 'Splash' }] }); } },
   ];

@@ -11,6 +11,7 @@ import OnboardingScreen from '../screens/OnboardingScreen';
 import StudentTabs from './StudentTabs';
 import TeacherTabs from './TeacherTabs';
 import ManagerTabs from './ManagerTabs';
+import ProfileScreen from '../screens/ProfileScreen';
 import ExamScreen from '../screens/ExamScreen';
 import PracticeRunnerScreen from '../screens/PracticeRunnerScreen';
 import LeaderboardScreen from '../screens/LeaderboardScreen';
@@ -85,6 +86,10 @@ export default function RootNavigator() {
         <Stack.Screen name="Notifications" component={NotificationsScreen} />
         <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
         <Stack.Screen name="TwoFactor" component={TwoFactorScreen} />
+        {/* Profil ekrani — Student uchun tab ichida ochiladi; boshqa rollar
+            (o'qituvchi/menejer/direktor/admin) menyu yoki header orqali shu
+            stack ekraniga o'tadi. ProfileScreen o'zi rolga qarab moslashadi. */}
+        <Stack.Screen name="Profile" component={ProfileScreen} />
         <Stack.Screen name="TeacherOlympiads" component={TeacherOlympiadsScreen} />
         <Stack.Screen name="CreateOlympiad" component={CreateOlympiadScreen} />
         <Stack.Screen name="QuestionCreator" component={QuestionCreatorScreen} />

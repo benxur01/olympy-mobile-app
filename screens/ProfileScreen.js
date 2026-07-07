@@ -166,12 +166,23 @@ export default function ProfileScreen({ navigation }) {
   const THEME_OPTIONS = ['light', 'dark', 'system'];
   const THEME_LABELS = ['Yorug\'', 'Tungi', 'Tizim'];
   const { user, logout, reloadMe } = useAuth();
-  const [tab, setTab] = useState('Sertifikatlar');
+  // Profil ekrani barcha rollarga ochiq (o'qituvchi/menejer/direktor/admin
+  // menyu yoki header orqali kiradi), lekin natija/olimpiada/sertifikat/coin
+  // va referral faqat o'quvchida mavjud. Non-student uchun student API'larni
+  // umuman chaqirmaymiz va faqat umumiy bo'limlarni (tema, parol, 2FA,
+  // maxfiylik, chiqish) ko'rsatamiz.
+  const isStudent = (user?.roles || []).includes('student');
+  const [tab, setTab] = useState(isStudent ? 'Sertifikatlar' : 'Sozlamalar');
   const [certImage, setCertImage] = useState(null);
   const [certLoading, setCertLoading] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
 
   const { data, loading, error, reload, refresh } = useFetch(async () => {
+    // Boshqa rollar uchun student endpoint'lari 403 qaytaradi — ularni
+    // chaqirmaymiz (aks holda hammasi null bo'lib xato ekraniga tushardi).
+    if (!isStudent) {
+      return { stats: null, streak: null, results: [], coins: 0, olympiads: [], referral: null };
+    }
     const [stats, streak, results, shop, olympiads, referral] = await Promise.all([
       studentApi.myStats().then((r) => r.data).catch(() => null),
       studentApi.myStreak().then((r) => r.data).catch(() => null),
@@ -193,7 +204,7 @@ export default function ProfileScreen({ navigation }) {
       olympiads: Array.isArray(olympiads) ? olympiads : olympiads?.results || olympiads?.entries || [],
       referral,
     };
-  }, []);
+  }, [isStudent]);
 
   if (loading) return <LoadingState message="Profil yuklanmoqda…" />;
   if (error && !data) return <ErrorState onRetry={reload} />;
@@ -410,37 +421,41 @@ export default function ProfileScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.statsGrid}>
-          <Card radius={14} style={styles.statCell}>
-            <Text style={styles.statValue}>{stats.average_score ?? 0}</Text>
-            <Text style={styles.statLabel}>O'rtacha</Text>
-          </Card>
-          <Card radius={14} style={styles.statCell}>
-            <Text style={styles.statValue}>{stats.best_rank ? `#${stats.best_rank}` : '—'}</Text>
-            <Text style={styles.statLabel}>Reyting</Text>
-          </Card>
-          <Card radius={14} style={styles.statCell}>
-            <Text style={[styles.statValue, { color: colors.orange }]}>{streak.streak_count ?? 0}</Text>
-            <Text style={styles.statLabel}>Streak</Text>
-          </Card>
-          <TouchableOpacity activeOpacity={0.85} style={styles.statTouch} onPress={() => navigation.navigate('Shop')}>
-            <Card radius={14} style={[styles.statCell, { flex: 1 }]}>
-              <Text style={[styles.statValue, { color: colors.gold }]}>{coins.toLocaleString('uz-UZ')}</Text>
-              <Text style={styles.statLabel}>Coin</Text>
+        {isStudent ? (
+          <View style={styles.statsGrid}>
+            <Card radius={14} style={styles.statCell}>
+              <Text style={styles.statValue}>{stats.average_score ?? 0}</Text>
+              <Text style={styles.statLabel}>O'rtacha</Text>
             </Card>
-          </TouchableOpacity>
-        </View>
+            <Card radius={14} style={styles.statCell}>
+              <Text style={styles.statValue}>{stats.best_rank ? `#${stats.best_rank}` : '—'}</Text>
+              <Text style={styles.statLabel}>Reyting</Text>
+            </Card>
+            <Card radius={14} style={styles.statCell}>
+              <Text style={[styles.statValue, { color: colors.orange }]}>{streak.streak_count ?? 0}</Text>
+              <Text style={styles.statLabel}>Streak</Text>
+            </Card>
+            <TouchableOpacity activeOpacity={0.85} style={styles.statTouch} onPress={() => navigation.navigate('Shop')}>
+              <Card radius={14} style={[styles.statCell, { flex: 1 }]}>
+                <Text style={[styles.statValue, { color: colors.gold }]}>{coins.toLocaleString('uz-UZ')}</Text>
+                <Text style={styles.statLabel}>Coin</Text>
+              </Card>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.tabs}
-          contentContainerStyle={styles.tabsRow}
-        >
-          {TABS.map((t) => (
-            <Chip key={t} label={t} active={tab === t} onPress={() => setTab(t)} />
-          ))}
-        </ScrollView>
+        {isStudent ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.tabs}
+            contentContainerStyle={styles.tabsRow}
+          >
+            {TABS.map((t) => (
+              <Chip key={t} label={t} active={tab === t} onPress={() => setTab(t)} />
+            ))}
+          </ScrollView>
+        ) : null}
 
         {tab === 'Olimpiadalar' ? (
           participated.length === 0 ? (
@@ -483,7 +498,7 @@ export default function ProfileScreen({ navigation }) {
                 style={styles.themeSegmented}
               />
             </Card>
-            {!isPremium ? (
+            {isStudent && !isPremium ? (
               <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('Premium')}>
                 <Card style={styles.settingRow}>
                   <Text style={styles.settingText}>Premiumga o'tish</Text>
@@ -551,37 +566,41 @@ export default function ProfileScreen({ navigation }) {
           </View>
         )}
 
-        {data?.referral ? (
+        {isStudent && data?.referral ? (
           <ReferralSection referral={data.referral} onUsed={refresh} styles={styles} colors={colors} />
         ) : null}
 
-        <Text style={styles.sectionTitle}>Yutuqlar</Text>
-        <View style={styles.achievements}>
-          <View style={styles.achievement}>
-            <View style={[styles.achCircle, streak.streak_count >= 7 ? { backgroundColor: tints.orange13, borderColor: tints.orangeBorder40 } : styles.achLocked]}>
-              <FlameIcon size={22} color={streak.streak_count >= 7 ? colors.orange : colors.textMuted} />
+        {isStudent ? (
+          <>
+            <Text style={styles.sectionTitle}>Yutuqlar</Text>
+            <View style={styles.achievements}>
+              <View style={styles.achievement}>
+                <View style={[styles.achCircle, streak.streak_count >= 7 ? { backgroundColor: tints.orange13, borderColor: tints.orangeBorder40 } : styles.achLocked]}>
+                  <FlameIcon size={22} color={streak.streak_count >= 7 ? colors.orange : colors.textMuted} />
+                </View>
+                <Text style={styles.achLabel}>7 kun streak</Text>
+              </View>
+              <View style={styles.achievement}>
+                <View style={[styles.achCircle, stats.best_rank && stats.best_rank <= 20 ? { backgroundColor: tints.blue13, borderColor: tints.blueBorder30 } : styles.achLocked]}>
+                  <StarIcon size={22} color={stats.best_rank && stats.best_rank <= 20 ? colors.blue : colors.textMuted} />
+                </View>
+                <Text style={styles.achLabel}>Top 20</Text>
+              </View>
+              <View style={styles.achievement}>
+                <View style={[styles.achCircle, (stats.average_score || 0) >= 90 ? { backgroundColor: tints.green13, borderColor: tints.greenBorder40 } : styles.achLocked]}>
+                  <CheckIcon size={22} color={(stats.average_score || 0) >= 90 ? colors.greenLight : colors.textMuted} />
+                </View>
+                <Text style={styles.achLabel}>90%+ natija</Text>
+              </View>
+              <View style={styles.achievement}>
+                <View style={[styles.achCircle, (stats.total_attempts || 0) >= 50 ? { backgroundColor: tints.purple16, borderColor: tints.purpleBorder35 } : styles.achLocked]}>
+                  <LockIcon size={20} color={(stats.total_attempts || 0) >= 50 ? colors.purple : colors.textMuted} />
+                </View>
+                <Text style={[styles.achLabel, (stats.total_attempts || 0) >= 50 ? null : { color: colors.textMuted }]}>50 tadbir</Text>
+              </View>
             </View>
-            <Text style={styles.achLabel}>7 kun streak</Text>
-          </View>
-          <View style={styles.achievement}>
-            <View style={[styles.achCircle, stats.best_rank && stats.best_rank <= 20 ? { backgroundColor: tints.blue13, borderColor: tints.blueBorder30 } : styles.achLocked]}>
-              <StarIcon size={22} color={stats.best_rank && stats.best_rank <= 20 ? colors.blue : colors.textMuted} />
-            </View>
-            <Text style={styles.achLabel}>Top 20</Text>
-          </View>
-          <View style={styles.achievement}>
-            <View style={[styles.achCircle, (stats.average_score || 0) >= 90 ? { backgroundColor: tints.green13, borderColor: tints.greenBorder40 } : styles.achLocked]}>
-              <CheckIcon size={22} color={(stats.average_score || 0) >= 90 ? colors.greenLight : colors.textMuted} />
-            </View>
-            <Text style={styles.achLabel}>90%+ natija</Text>
-          </View>
-          <View style={styles.achievement}>
-            <View style={[styles.achCircle, (stats.total_attempts || 0) >= 50 ? { backgroundColor: tints.purple16, borderColor: tints.purpleBorder35 } : styles.achLocked]}>
-              <LockIcon size={20} color={(stats.total_attempts || 0) >= 50 ? colors.purple : colors.textMuted} />
-            </View>
-            <Text style={[styles.achLabel, (stats.total_attempts || 0) >= 50 ? null : { color: colors.textMuted }]}>50 tadbir</Text>
-          </View>
-        </View>
+          </>
+        ) : null}
       </ScrollView>
 
       {certLoading ? (

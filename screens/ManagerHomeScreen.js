@@ -29,6 +29,7 @@ import {
   BookIcon,
   SettingsIcon,
   ProfileBadgeIcon,
+  UserIcon,
   UsersIcon,
   TrophyIcon,
   EyeIcon,
@@ -123,6 +124,7 @@ export default function ManagerHomeScreen({ navigation }) {
     { label: 'Savol banki', icon: <BookIcon size={18} color={colors.textSecondary} />, onPress: () => navigation.navigate('QuestionCreator') },
     { label: 'Essay baholash', icon: <EditIcon size={17} color={colors.textSecondary} />, onPress: () => navigation.navigate('EssayGrading') },
     { label: 'Reyting', icon: <TrophyIcon size={17} color={colors.gold} />, onPress: () => navigation.navigate('Leaderboard') },
+    { label: 'Profil', icon: <UserIcon size={18} color={colors.textSecondary} />, onPress: () => navigation.navigate('Profile') },
     { label: 'Parolni o\'zgartirish', icon: <SettingsIcon size={18} color={colors.textSecondary} />, onPress: () => navigation.navigate('ChangePassword') },
     { label: 'Hisobdan chiqish', icon: <ProfileBadgeIcon size={18} color={colors.red} />, danger: true, onPress: async () => { await logout(); navigation.reset({ index: 0, routes: [{ name: 'Splash' }] }); } },
   ];

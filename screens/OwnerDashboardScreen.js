@@ -266,7 +266,14 @@ export default function OwnerDashboardScreen({ navigation }) {
             <Text style={styles.title}>{stats.name || center.name}</Text>
             <Text style={styles.subtitle}>Direktor paneli</Text>
           </View>
-          <Avatar letter={initialOf(user?.full_name)} size={38} fontSize={15} background={colors.gold} color={colors.goldText} />
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('Profile')}
+            accessibilityRole="button"
+            accessibilityLabel="Profil"
+          >
+            <Avatar letter={initialOf(user?.full_name)} size={38} fontSize={15} background={colors.gold} color={colors.goldText} />
+          </TouchableOpacity>
         </View>
 
         {tab === 'Panel' ? (
@@ -403,6 +410,12 @@ export default function OwnerDashboardScreen({ navigation }) {
                 {[center.region, center.status === 'approved' || center.status === 'active' ? 'Tasdiqlangan' : center.status].filter(Boolean).join(' · ')}
               </Text>
             </Card>
+            <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('Profile')}>
+              <Card style={styles.settingRow}>
+                <Text style={styles.settingText}>Profil</Text>
+                <Text style={styles.settingArrow}>›</Text>
+              </Card>
+            </TouchableOpacity>
             <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('ChangePassword')}>
               <Card style={styles.settingRow}>
                 <Text style={styles.settingText}>Parolni o'zgartirish</Text>
