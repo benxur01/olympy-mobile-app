@@ -15,7 +15,9 @@
     "android": {
       "package": "uz.prolymp.olympy",
       "versionCode": 1,
-      "permissions": [],
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
         "monochromeImage": "./assets/android-icon-monochrome.png",
@@ -42,6 +44,12 @@
           "photosPermission": "Olympy profil rasmingizni yuklash uchun galereyaga ruxsat so'raydi."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "72f6f8f1-3ef0-4d9d-b888-492116c2d98a"
+      }
+    },
+    "owner": "benxur"
   }
 }
