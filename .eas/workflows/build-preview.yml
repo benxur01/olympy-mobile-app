@@ -1,0 +1,13 @@
+name: Build preview APK
+
+# Faqat qo'lda ishga tushiriladi (test/ichki tarqatish uchun APK):
+#   eas workflow:run .eas/workflows/build-preview.yml
+# yoki Expo dashboard > Workflows bo'limidan "Run" tugmasi orqali.
+
+jobs:
+  build_android_preview:
+    name: Build Android (preview APK)
+    type: build
+    params:
+      platform: android
+      profile: preview

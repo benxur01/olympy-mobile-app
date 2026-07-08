@@ -1,0 +1,43 @@
+name: Release (build + submit on tag)
+
+# Faqat siz git tag qo'yib push qilganingizda avtomatik ishga tushadi
+# (masalan: git tag v1.2.0 && git push origin v1.2.0).
+# Oddiy `git push origin master` bu workflow'ni ishga tushirmaydi -
+# shu tarzda tasodifiy/sinov push'lar hech qachon do'konga ketmaydi,
+# faqat siz ataylab "bu release" deb belgilagan holatda ishlaydi.
+#
+# Android va iOS uchun production build qiladi va ikkalasini ham
+# Google Play / App Store'ga avtomatik submit qiladi.
+#
+# Ishlashi uchun submit credentiallari oldindan sozlangan bo'lishi kerak:
+#   - Android: Google Service Account JSON (eas credentials -p android)
+#   - iOS: App Store Connect API Key + Apple Team ID (eas credentials -p ios)
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build_android:
+    name: Build Android (production)
+    type: build
+    params:
+      platform: android
+      profile: production
+  build_ios:
+    name: Build iOS (production)
+    type: build
+    params:
+      platform: ios
+      profile: production
+  submit_android:
+    name: Submit Android to Play Store
+    needs: [build_android]
+    type: submit
+    params:
+      build_id: ${{ needs.build_android.outputs.build_id }}
+  submit_ios:
+    name: Submit iOS to App Store
+    needs: [build_ios]
+    type: submit
+    params:
+      build_id: ${{ needs.build_ios.outputs.build_id }}
