@@ -8,6 +8,12 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "backgroundColor": "#F4FBF8",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/72f6f8f1-3ef0-4d9d-b888-492116c2d98a"
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "uz.prolymp.olympy"
