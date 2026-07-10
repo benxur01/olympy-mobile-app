@@ -2,13 +2,14 @@ name: Build production apps
 
 # master branchga push qilinganda avtomatik ishga tushadi va
 # Android (app-bundle) hamda iOS uchun production build yaratadi.
-# Bu bosqich do'konlarga avtomatik topshirmaydi (submit qilmaydi) —
-# store'ga chiqarish alohida, qo'lda ishga tushiriladigan
-# build-and-submit.yml workflow orqali amalga oshiriladi.
+# Android build tayyor bo'lgach, avtomatik ravishda Google Play'ga
+# (review'ga) submit qilinadi.
+# iOS uchun submit hali qo'lda amalga oshiriladi (Apple credentiallar
+# sozlanmagan) - build-and-submit.yml workflow orqali.
+
 on:
   push:
     branches: ['master']
-
 jobs:
   build_android:
     name: Build Android (production)
@@ -22,3 +23,9 @@ jobs:
     params:
       platform: ios
       profile: production
+  submit_android:
+    name: Submit Android to Play Store
+    needs: [build_android]
+    type: submit
+    params:
+      build_id: ${{ needs.build_android.outputs.build_id }}
