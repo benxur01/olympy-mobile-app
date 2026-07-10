@@ -1,0 +1,20 @@
+name: Update production apps
+
+# master branchga push qilinganda avtomatik ishga tushadi va
+# Android hamda iOS uchun OTA (over-the-air) update chop etadi.
+# Bu faqat JS/asset o'zgarishlarini foydalanuvchilarga yetkazadi.
+# Agar native kod o'zgargan bo'lsa (masalan yangi native kutubxona
+# qo'shilsa), bu update yetarli emas - build-production.yml orqali
+# yangi build yaratib, do'konlarga qayta chiqarish kerak bo'ladi.
+
+on:
+  push:
+    branches: ['master']
+
+jobs:
+  publish_update:
+    name: Publish OTA update (production)
+    type: update
+    params:
+      branch: production
+      message: ${{ github.event.head_commit.message }}
