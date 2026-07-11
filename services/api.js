@@ -291,18 +291,59 @@ export const teacherApi = {
   questions: (params) => client.get('/api/questions/', { params }),
   createQuestion: (payload) => client.post('/api/questions/', payload),
   generateAiQuestions: (payload) => client.post('/api/questions/generate-ai/', payload),
-  importExcel: (formData) =>
+  // Excel/CSV to'g'ridan-to'g'ri import (sinxron, polling YO'Q). `params` orqali
+  // ?center=&subject= query uzatiladi. Javob: { created, errors, error_count }.
+  importExcel: (formData, params) =>
     client.post('/api/questions/import/', formData, {
+      params: params || {},
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
   importWord: (formData) =>
     client.post('/api/questions/import-word/', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
-  pdfPreview: (formData) =>
-    client.post('/api/questions/pdf-preview/', formData, {
+  // PDFdan AI yordamida savol ajratish. Backend Celery task boshlaydi va
+  // { task_id } qaytaradi; runCode naqshiga o'xshab natija tayyor bo'lguncha
+  // polling qilamiz (har 2s, maks 150 × 2s = 5 daqiqa). `formData`da fayl `pdf`
+  // key bilan va center/subject/difficulty/question_type matn maydonlari bilan
+  // keladi. Muvaffaqiyatda { status:'COMPLETED', questions, provider, warning,
+  // ... } qaytadi. Xato/timeout'da throw qiladi.
+  extractPdfQuestions: async (formData) => {
+    const { data: startData } = await client.post('/api/questions/pdf-preview/', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
-    }),
+    });
+    const taskId = startData?.task_id;
+    // Orqaga moslik: eski backend to'g'ridan-to'g'ri natija qaytarsa task_id yo'q.
+    if (!taskId) return startData;
+    for (let i = 0; i < 150; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const { data: state } = await client.get(`/api/questions/pdf-preview/${taskId}/status/`);
+      if (state?.status === 'COMPLETED') return state;
+      if (state?.status === 'FAILED') {
+        throw new Error(state?.detail || state?.error || "PDFdan savollarni ajratib bo'lmadi");
+      }
+    }
+    throw new Error("PDF tahlil qilish vaqti tugadi");
+  },
+  // Word (.docx) matnidan AI yordamida savol ajratish. extractPdfQuestions bilan
+  // bir xil oqim; fayl `word` key bilan word-ai-preview/ ga yuboriladi, status
+  // esa AYNAN pdf-preview/<task_id>/status/ orqali o'qiladi (backend keshi bir xil).
+  extractWordAiQuestions: async (formData) => {
+    const { data: startData } = await client.post('/api/questions/word-ai-preview/', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const taskId = startData?.task_id;
+    if (!taskId) return startData;
+    for (let i = 0; i < 150; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const { data: state } = await client.get(`/api/questions/pdf-preview/${taskId}/status/`);
+      if (state?.status === 'COMPLETED') return state;
+      if (state?.status === 'FAILED') {
+        throw new Error(state?.detail || state?.error || "Word matnidan savollarni ajratib bo'lmadi");
+      }
+    }
+    throw new Error("Word tahlil qilish vaqti tugadi");
+  },
   explainQuestion: (questionId) => client.post(`/api/questions/${questionId}/explain/`),
 };
 

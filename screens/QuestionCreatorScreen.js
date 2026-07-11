@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as DocumentPicker from 'expo-document-picker';
 import { useTheme } from '../services/ThemeContext';
 import { FONTS } from '../constants/typography';
 import Card from '../components/Card';
@@ -11,7 +12,7 @@ import EmptyState from '../components/EmptyState';
 import { teacherApi } from '../services/api';
 import { useAuth } from '../services/AuthContext';
 import { centerIdForUser } from '../services/roles';
-import { SparkleIcon, CheckIcon, CloseIcon, InboxIcon } from '../components/icons/Icons';
+import { SparkleIcon, CheckIcon, CloseIcon, InboxIcon, FileIcon, WarningIcon } from '../components/icons/Icons';
 
 const MODES = ['AI generatsiya', "Qo'lda"];
 const IMPORT_MODES = ['PDF import', 'Word', 'Excel'];
@@ -40,6 +41,16 @@ export default function QuestionCreatorScreen({ navigation }) {
   const [generated, setGenerated] = useState([]);
   // Har bir generatsiya qilingan savol uchun rad etilganlar (indeks → true).
   const [rejected, setRejected] = useState({});
+
+  // Fayldan import (PDF / Word / Excel) holati. PDF va Word AI-preview'lari
+  // AI generatsiya bilan bir xil ko'rib-tasdiqlash oqimini ishlatadi (importResult
+  // + importRejected). Excel esa sinxron — natija xulosasi excelSummary'da.
+  const [importLoading, setImportLoading] = useState(false);
+  const [importSaving, setImportSaving] = useState(false);
+  const [importResult, setImportResult] = useState([]);
+  const [importRejected, setImportRejected] = useState({});
+  const [importWarning, setImportWarning] = useState('');
+  const [excelSummary, setExcelSummary] = useState(null);
 
   // Qo'lda yaratish uchun forma holati.
   const [mText, setMText] = useState('');
@@ -126,6 +137,229 @@ export default function QuestionCreatorScreen({ navigation }) {
     Alert.alert('Saqlandi', `${ok} ta savol savollar bankiga qo'shildi.`);
   };
 
+  // Rejim almashtirilganda oldingi import natijalarini tozalaymiz (chalkashmaslik
+  // uchun — masalan PDF natijasi Excel rejimida ko'rinib qolmasin).
+  const switchMode = (m) => {
+    setMode(m);
+    setImportResult([]);
+    setImportRejected({});
+    setImportWarning('');
+    setExcelSummary(null);
+  };
+
+  // Import xatolarini AI generatsiya bilan bir xil ko'rsatamiz: 403 +
+  // upgrade_required bo'lsa Premium prompt, aks holda backend `detail`i.
+  const importError = (e, fallback) => {
+    if (e?.response?.data?.upgrade_required) {
+      Alert.alert(
+        'Premium kerak',
+        e?.response?.data?.detail || 'Bu funksiya markaz premium obunasini talab qiladi.',
+        [
+          { text: 'Bekor' },
+          { text: 'Premium', onPress: () => navigation.navigate('Premium') },
+        ]
+      );
+    } else {
+      const detail = e?.response?.data?.detail || e?.message;
+      Alert.alert('Xatolik', detail || fallback);
+    }
+  };
+
+  // PDF / Word AI-preview: fayl tanlab, backendga yuborib, natija tayyor
+  // bo'lguncha polling qiladi (extractPdfQuestions / extractWordAiQuestions
+  // ichida). `kind` — 'pdf' | 'word'.
+  const pickAndExtract = async (kind) => {
+    if (noCenter || importLoading) return;
+    const types = kind === 'pdf'
+      ? ['application/pdf']
+      : ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/pdf'];
+    let picked;
+    try {
+      picked = await DocumentPicker.getDocumentAsync({ type: types, copyToCacheDirectory: true });
+    } catch (e) {
+      Alert.alert('Xatolik', "Faylni ochib bo'lmadi.");
+      return;
+    }
+    if (picked?.canceled) return;
+    const asset = picked?.assets?.[0];
+    if (!asset) return;
+
+    setImportResult([]);
+    setImportRejected({});
+    setImportWarning('');
+    setImportLoading(true);
+    try {
+      const fd = new FormData();
+      const fileKey = kind === 'pdf' ? 'pdf' : 'word';
+      const fallbackType = kind === 'pdf'
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      fd.append(fileKey, { uri: asset.uri, name: asset.name, type: asset.mimeType || fallbackType });
+      fd.append('center', String(centerId));
+      fd.append('subject', subject);
+      fd.append('difficulty', difficulty);
+      fd.append('question_type', 'mcq');
+      const data = kind === 'pdf'
+        ? await teacherApi.extractPdfQuestions(fd)
+        : await teacherApi.extractWordAiQuestions(fd);
+      const list = Array.isArray(data?.questions) ? data.questions : [];
+      setImportResult(list);
+      setImportWarning(
+        data?.warning ||
+        (data?.complete === false
+          ? "Fayl qisman ajratildi. Saqlashdan oldin asl fayl bilan solishtirib tekshiring."
+          : '')
+      );
+      if (!list.length) Alert.alert('Natija yo\'q', "Fayldan savol topilmadi. Boshqa fayl bilan urinib ko'ring.");
+    } catch (e) {
+      importError(e, "Faylni tahlil qilib bo'lmadi. Qayta urinib ko'ring.");
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  // Excel/CSV import — sinxron (polling yo'q). Natija: { created, errors, error_count }.
+  const pickAndImportExcel = async () => {
+    if (noCenter || importLoading) return;
+    let picked;
+    try {
+      picked = await DocumentPicker.getDocumentAsync({
+        type: [
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-excel',
+          'text/csv',
+        ],
+        copyToCacheDirectory: true,
+      });
+    } catch (e) {
+      Alert.alert('Xatolik', "Faylni ochib bo'lmadi.");
+      return;
+    }
+    if (picked?.canceled) return;
+    const asset = picked?.assets?.[0];
+    if (!asset) return;
+
+    setExcelSummary(null);
+    setImportLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', {
+        uri: asset.uri,
+        name: asset.name,
+        type: asset.mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const { data } = await teacherApi.importExcel(fd, { center: centerId, subject });
+      const errors = Array.isArray(data?.errors) ? data.errors : [];
+      setExcelSummary({
+        created: data?.created || 0,
+        errors,
+        errorCount: data?.error_count ?? errors.length,
+      });
+    } catch (e) {
+      importError(e, "Import qilib bo'lmadi. Qayta urinib ko'ring.");
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const importApprovedCount = importResult.filter((_, i) => !importRejected[i]).length;
+  const toggleImportReject = (i, value) => setImportRejected((prev) => ({ ...prev, [i]: value }));
+
+  const saveImportResult = async () => {
+    if (importSaving) return;
+    if (!importApprovedCount) {
+      Alert.alert('Savol tanlanmagan', "Saqlash uchun kamida bitta savolni tasdiqlang (✓).");
+      return;
+    }
+    setImportSaving(true);
+    let ok = 0;
+    for (let i = 0; i < importResult.length; i += 1) {
+      if (importRejected[i]) continue;
+      const q = importResult[i];
+      try {
+        await teacherApi.createQuestion({
+          center: centerId,
+          subject: q.subject || subject,
+          text: q.text,
+          options: q.options || [],
+          correct_answer: q.correct_answer ?? 0,
+          difficulty: q.difficulty || difficulty,
+          question_type: 'mcq',
+        });
+        ok += 1;
+      } catch (e) {
+        // Bitta savol saqlanmasa qolganini davom ettiramiz.
+      }
+    }
+    setImportSaving(false);
+    setImportResult([]);
+    setImportRejected({});
+    setImportWarning('');
+    Alert.alert('Saqlandi', `${ok} ta savol savollar bankiga qo'shildi.`);
+  };
+
+  // AI generatsiya va PDF/Word import uchun umumiy ko'rib-tasdiqlash bloki.
+  const renderReview = (list, rejectedMap, onToggle, savingFlag, onSave) => {
+    const approved = list.filter((_, i) => !rejectedMap[i]).length;
+    return (
+      <>
+        <View style={styles.resultHeader}>
+          <Text style={styles.resultTitle}>Natija: {list.length} ta savol</Text>
+          <Text style={styles.resultSub}>{approved} tasdiqlangan</Text>
+        </View>
+        {list.map((q, qi) => {
+          const isRejected = !!rejectedMap[qi];
+          return (
+            <Card key={qi} style={[styles.questionCard, isRejected ? styles.questionRejected : null]}>
+              <View style={styles.qHead}>
+                <Text style={styles.qNum}>{qi + 1}-savol{isRejected ? ' · rad etildi' : ''}</Text>
+                <View style={styles.qActions}>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => onToggle(qi, false)}
+                    style={[styles.qActBtn, !isRejected ? styles.qApproveOn : null]}
+                  >
+                    <CheckIcon size={13} color={!isRejected ? colors.white : colors.textMuted} strokeWidth={3} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => onToggle(qi, true)}
+                    style={[styles.qActBtn, isRejected ? styles.qRejectOn : null]}
+                  >
+                    <CloseIcon size={11} color={isRejected ? colors.white : colors.textMuted} strokeWidth={3} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <Text style={styles.questionText}>{q.text}</Text>
+              <View style={styles.optionsRow}>
+                {(q.options || []).map((opt, oi) => {
+                  const correct = (q.correct_answer ?? -1) === oi;
+                  return (
+                    <View key={oi} style={correct ? styles.optionCorrect : styles.optionPill}>
+                      <Text style={correct ? styles.optionCorrectText : styles.optionText}>
+                        {LETTERS[oi] || oi + 1}) {String(opt)}{correct ? ' ✓' : ''}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </Card>
+          );
+        })}
+        <Button
+          title={savingFlag ? 'Saqlanmoqda…' : `Tasdiqlanganlarni saqlash (${approved} ta)`}
+          variant="success"
+          height={50}
+          radius={13}
+          fontSize={15}
+          style={styles.saveBtn}
+          disabled={savingFlag || approved === 0}
+          onPress={onSave}
+        />
+      </>
+    );
+  };
+
   const saveManual = async () => {
     if (noCenter || saving) return;
     if (!mText.trim()) {
@@ -177,12 +411,12 @@ export default function QuestionCreatorScreen({ navigation }) {
               label={m}
               active={mode === m}
               radius={11}
-              onPress={() => setMode(m)}
+              onPress={() => switchMode(m)}
               icon={mode === m && m === 'AI generatsiya' ? <SparkleIcon size={12} /> : null}
             />
           ))}
           {IMPORT_MODES.map((m) => (
-            <Chip key={m} label={m} active={mode === m} radius={11} onPress={() => setMode(m)} />
+            <Chip key={m} label={m} active={mode === m} radius={11} onPress={() => switchMode(m)} />
           ))}
         </ScrollView>
 
@@ -196,13 +430,115 @@ export default function QuestionCreatorScreen({ navigation }) {
             />
           </View>
         ) : IMPORT_MODES.includes(mode) ? (
-          <Card radius={18} style={styles.infoCard}>
-            <Text style={styles.infoTitle}>{mode}</Text>
-            <Text style={styles.infoText}>
-              Fayldan ommaviy import (PDF / Word / Excel) hozircha veb-versiyada mavjud. Mobil
-              ilovada AI generatsiya yoki qo'lda kiritishdan foydalaning.
-            </Text>
-          </Card>
+          <>
+            <Card radius={18} style={styles.formCard}>
+              <View style={styles.formRow}>
+                <View style={styles.formCol}>
+                  <Text style={styles.fieldLabel}>FAN</Text>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    style={styles.select}
+                    onPress={() => setSubjectIdx((i) => (i + 1) % SUBJECTS.length)}
+                  >
+                    <Text style={styles.selectText}>{subject}</Text>
+                    <Text style={styles.selectHint}>o'zgartirish ›</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {mode !== 'Excel' ? (
+                <>
+                  <Text style={[styles.fieldLabel, { marginTop: 12 }]}>QIYINLIK</Text>
+                  <View style={styles.difficultyRow}>
+                    {DIFFICULTIES.map((d) => {
+                      const active = difficulty === d.value;
+                      return (
+                        <TouchableOpacity
+                          key={d.value}
+                          activeOpacity={0.8}
+                          onPress={() => setDifficulty(d.value)}
+                          style={[
+                            styles.difficultyOption,
+                            {
+                              borderColor: active ? colors.blue : colors.borderStrong,
+                              backgroundColor: active ? tints.blue14 : colors.surfaceDeep,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              fontFamily: active ? FONTS.extrabold : FONTS.bold,
+                              color: active ? colors.blueLight : colors.textSecondary,
+                            }}
+                          >
+                            {d.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </>
+              ) : null}
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={[styles.uploadArea, { marginTop: 16 }]}
+                disabled={importLoading}
+                onPress={() =>
+                  mode === 'PDF import'
+                    ? pickAndExtract('pdf')
+                    : mode === 'Word'
+                    ? pickAndExtract('word')
+                    : pickAndImportExcel()
+                }
+              >
+                <FileIcon size={30} color={colors.blueLight} />
+                <Text style={styles.uploadTitle}>
+                  {importLoading
+                    ? mode === 'Excel'
+                      ? 'Import qilinmoqda…'
+                      : 'Tahlil qilinmoqda…'
+                    : 'Fayl tanlash'}
+                </Text>
+                <Text style={styles.uploadHint}>
+                  {mode === 'PDF import'
+                    ? "PDF faylni AI tahlil qiladi va savollarni ajratadi"
+                    : mode === 'Word'
+                    ? "Word (.docx) yoki PDF matnidan AI savol ajratadi"
+                    : "Excel (.xlsx) yoki CSV faylni to'g'ridan-to'g'ri import qiladi"}
+                </Text>
+              </TouchableOpacity>
+            </Card>
+
+            {importWarning ? (
+              <Card radius={14} style={styles.warningCard}>
+                <WarningIcon size={16} color={colors.orange} />
+                <Text style={styles.warningText}>{importWarning}</Text>
+              </Card>
+            ) : null}
+
+            {mode === 'Excel' && excelSummary ? (
+              <Card radius={14} style={styles.summaryCard}>
+                <Text style={styles.summaryTitle}>{excelSummary.created} ta savol qo'shildi</Text>
+                {excelSummary.errorCount > 0 ? (
+                  <>
+                    <Text style={styles.summaryText}>{excelSummary.errorCount} ta qatorda xatolik bor:</Text>
+                    {excelSummary.errors.slice(0, 10).map((err, ei) => (
+                      <Text key={ei} style={styles.errorLine}>• {String(err)}</Text>
+                    ))}
+                    {excelSummary.errors.length > 10 ? (
+                      <Text style={styles.errorLine}>… va yana {excelSummary.errors.length - 10} ta</Text>
+                    ) : null}
+                  </>
+                ) : null}
+              </Card>
+            ) : null}
+
+            {mode !== 'Excel' && importResult.length > 0
+              ? renderReview(importResult, importRejected, toggleImportReject, importSaving, saveImportResult)
+              : null}
+          </>
         ) : mode === 'AI generatsiya' ? (
           <>
             <Card radius={18} style={styles.formCard}>
@@ -283,63 +619,9 @@ export default function QuestionCreatorScreen({ navigation }) {
               />
             </Card>
 
-            {generated.length > 0 ? (
-              <>
-                <View style={styles.resultHeader}>
-                  <Text style={styles.resultTitle}>Natija: {generated.length} ta savol</Text>
-                  <Text style={styles.resultSub}>{approvedCount} tasdiqlangan</Text>
-                </View>
-                {generated.map((q, qi) => {
-                  const isRejected = !!rejected[qi];
-                  return (
-                    <Card key={qi} style={[styles.questionCard, isRejected ? styles.questionRejected : null]}>
-                      <View style={styles.qHead}>
-                        <Text style={styles.qNum}>{qi + 1}-savol{isRejected ? ' · rad etildi' : ''}</Text>
-                        <View style={styles.qActions}>
-                          <TouchableOpacity
-                            activeOpacity={0.8}
-                            onPress={() => toggleReject(qi, false)}
-                            style={[styles.qActBtn, !isRejected ? styles.qApproveOn : null]}
-                          >
-                            <CheckIcon size={13} color={!isRejected ? colors.white : colors.textMuted} strokeWidth={3} />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            activeOpacity={0.8}
-                            onPress={() => toggleReject(qi, true)}
-                            style={[styles.qActBtn, isRejected ? styles.qRejectOn : null]}
-                          >
-                            <CloseIcon size={11} color={isRejected ? colors.white : colors.textMuted} strokeWidth={3} />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                      <Text style={styles.questionText}>{q.text}</Text>
-                      <View style={styles.optionsRow}>
-                        {(q.options || []).map((opt, oi) => {
-                          const correct = (q.correct_answer ?? -1) === oi;
-                          return (
-                            <View key={oi} style={correct ? styles.optionCorrect : styles.optionPill}>
-                              <Text style={correct ? styles.optionCorrectText : styles.optionText}>
-                                {LETTERS[oi] || oi + 1}) {String(opt)}{correct ? ' ✓' : ''}
-                              </Text>
-                            </View>
-                          );
-                        })}
-                      </View>
-                    </Card>
-                  );
-                })}
-                <Button
-                  title={saving ? 'Saqlanmoqda…' : `Tasdiqlanganlarni saqlash (${approvedCount} ta)`}
-                  variant="success"
-                  height={50}
-                  radius={13}
-                  fontSize={15}
-                  style={styles.saveBtn}
-                  disabled={saving || approvedCount === 0}
-                  onPress={saveGenerated}
-                />
-              </>
-            ) : null}
+            {generated.length > 0
+              ? renderReview(generated, rejected, toggleReject, saving, saveGenerated)
+              : null}
           </>
         ) : (
           // Qo'lda kiritish
@@ -464,21 +746,65 @@ const makeStyles = (colors, tints) => StyleSheet.create({
   noCenter: {
     marginTop: 30,
   },
-  infoCard: {
-    marginTop: 14,
-    padding: 18,
+  uploadArea: {
+    borderWidth: 1.5,
+    borderColor: colors.borderStrong,
+    borderStyle: 'dashed',
+    borderRadius: 14,
+    backgroundColor: colors.surfaceDeep,
+    alignItems: 'center',
+    paddingVertical: 22,
+    paddingHorizontal: 16,
   },
-  infoTitle: {
-    fontSize: 15,
+  uploadTitle: {
+    fontSize: 14,
     fontFamily: FONTS.extrabold,
     color: colors.text,
+    marginTop: 10,
   },
-  infoText: {
-    fontSize: 13,
+  uploadHint: {
+    fontSize: 11.5,
     fontFamily: FONTS.semibold,
     color: colors.textSecondary,
-    lineHeight: 19.5,
-    marginTop: 6,
+    textAlign: 'center',
+    lineHeight: 17,
+    marginTop: 4,
+  },
+  warningCard: {
+    marginTop: 12,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 9,
+  },
+  warningText: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: FONTS.semibold,
+    color: colors.textSecondary,
+    lineHeight: 17.5,
+  },
+  summaryCard: {
+    marginTop: 12,
+    padding: 16,
+  },
+  summaryTitle: {
+    fontSize: 14.5,
+    fontFamily: FONTS.extrabold,
+    color: colors.greenLight,
+  },
+  summaryText: {
+    fontSize: 12,
+    fontFamily: FONTS.bold,
+    color: colors.textSecondary,
+    marginTop: 8,
+  },
+  errorLine: {
+    fontSize: 11.5,
+    fontFamily: FONTS.semibold,
+    color: colors.textMuted,
+    lineHeight: 17,
+    marginTop: 3,
   },
   formCard: {
     marginTop: 12,
