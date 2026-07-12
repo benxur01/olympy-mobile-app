@@ -144,7 +144,7 @@ export default function EssayGradingScreen() {
         <View style={styles.studentCard}>
           <Avatar letter={firstLetter(current.student_name)} size={36} fontSize={14} background={colors.green} />
           <View style={styles.studentInfo}>
-            <Text style={styles.studentName}>{current.student_name}</Text>
+            <Text style={styles.studentName} numberOfLines={1}>{current.student_name}</Text>
             <Text style={styles.studentSub}>Maksimal ball: {maxScore}</Text>
           </View>
           <Badge label="Kutilmoqda" color={colors.orange} background={tints.orange14} />

@@ -204,6 +204,7 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flexWrap: 'wrap',
   },
   eventTitle: {
     fontSize: 16,

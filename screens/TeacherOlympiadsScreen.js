@@ -753,6 +753,7 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexWrap: 'wrap',
   },
   badgeSm: {
     paddingVertical: 3,

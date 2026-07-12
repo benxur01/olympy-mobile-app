@@ -849,8 +849,8 @@ const makeStyles = (colors, tints) =>
 
     qCard: { paddingVertical: 12, paddingHorizontal: 14, gap: 9 },
     qText: { fontSize: 13, fontFamily: FONTS.bold, color: colors.textBody, lineHeight: 18 },
-    qMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    qOpts: { fontSize: 10.5, fontFamily: FONTS.bold, color: colors.textMuted },
+    qMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+    qOpts: { fontSize: 10.5, fontFamily: FONTS.bold, color: colors.textMuted, flexShrink: 1 },
 
     logCard: { paddingVertical: 12, paddingHorizontal: 14, gap: 5 },
     logHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },

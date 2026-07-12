@@ -142,7 +142,7 @@ export default function ApplicationsScreen() {
                   />
                   <View style={styles.rowText}>
                     <View style={styles.nameRow}>
-                      <Text style={styles.name}>{nameOf(m.user)}</Text>
+                      <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{nameOf(m.user)}</Text>
                       {m.role === 'teacher' ? (
                         <Badge label="O'qituvchi" color={colors.purple} background={tints.purple16} style={styles.roleBadge} />
                       ) : m.role === 'manager' ? (
@@ -196,7 +196,7 @@ export default function ApplicationsScreen() {
                         background={AVATAR_COLORS[i % AVATAR_COLORS.length]}
                       />
                       <View style={styles.rowText}>
-                        <Text style={styles.name}>{nameOf(u)}</Text>
+                        <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{nameOf(u)}</Text>
                         <Text style={styles.sub}>{u.phone || m.subject || "O'quvchi"}</Text>
                       </View>
                       <Badge label="Tasdiqlangan" color={colors.greenLight} background={tints.green14} />
@@ -274,6 +274,7 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexWrap: 'wrap',
   },
   roleBadge: {
     paddingVertical: 2,
@@ -284,6 +285,7 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     fontSize: 14,
     fontFamily: FONTS.extrabold,
     color: colors.text,
+    flexShrink: 1,
   },
   sub: {
     fontSize: 11.5,

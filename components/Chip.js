@@ -44,7 +44,10 @@ export default function Chip({
           fontSize,
           fontFamily: active ? FONTS.extrabold : FONTS.bold,
           color: active ? color : colors.textSecondary,
+          flexShrink: 1,
         }}
+        numberOfLines={1}
+        ellipsizeMode="tail"
       >
         {label}
       </Text>
@@ -60,5 +63,6 @@ const makeStyles = () =>
       gap: 5,
       borderWidth: 1,
       alignSelf: 'flex-start',
+      maxWidth: '100%',
     },
   });

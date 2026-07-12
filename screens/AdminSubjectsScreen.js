@@ -70,6 +70,7 @@ export default function AdminSubjectsScreen() {
               placeholderTextColor={colors.textMuted}
               onSubmitEditing={addSubject}
               returnKeyType="done"
+              maxLength={40}
             />
             <Button
               title={saving ? '…' : "Qo'shish"}
@@ -98,7 +99,7 @@ export default function AdminSubjectsScreen() {
               return (
                 <Card key={s.id ?? label ?? i} style={styles.row}>
                   <BookIcon size={16} color={colors.textSecondary} />
-                  <Text style={styles.rowText}>{label}</Text>
+                  <Text style={styles.rowText} numberOfLines={1} ellipsizeMode="tail">{label}</Text>
                 </Card>
               );
             })}
@@ -173,6 +174,7 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     paddingHorizontal: 15,
   },
   rowText: {
+    flex: 1,
     fontSize: 13.5,
     fontFamily: FONTS.bold,
     color: colors.text,

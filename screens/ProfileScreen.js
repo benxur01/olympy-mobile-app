@@ -949,6 +949,7 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     alignItems: 'center',
     gap: 7,
     marginTop: 3,
+    flexWrap: 'wrap',
   },
   olyBadge: {
     paddingVertical: 2,

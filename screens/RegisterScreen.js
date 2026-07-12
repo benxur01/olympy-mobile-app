@@ -278,6 +278,7 @@ export default function RegisterScreen({ navigation }) {
           value={fullName}
           onChangeText={setFullName}
           editable={step === 1}
+          maxLength={60}
         />
 
         <Text style={styles.fieldLabel}>TELEFON RAQAM</Text>

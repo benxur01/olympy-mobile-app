@@ -137,6 +137,7 @@ export default function CreateOlympiadScreen({ navigation }) {
             onChangeText={setTitle}
             placeholder="Masalan: Matematika kuzgi olimpiadasi"
             placeholderTextColor={colors.textMuted}
+            maxLength={80}
           />
 
           <View style={styles.row}>

@@ -943,7 +943,7 @@ export default function OwnerDashboardScreen({ navigation }) {
               <View style={styles.memberDetailHead}>
                 <Avatar letter={initialOf(memberName(member))} size={54} fontSize={20} background={colors.purple} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.memberDetailName}>{memberName(member)}</Text>
+                  <Text style={styles.memberDetailName} numberOfLines={1}>{memberName(member)}</Text>
                   <Text style={styles.memberDetailSub}>
                     {[roleLabelOf(member.role), member.subject].filter(Boolean).join(' · ')}
                   </Text>

@@ -232,7 +232,7 @@ export default function ProctoringScreen() {
                     <View style={[styles.presenceDot, { backgroundColor: dotColor }]} />
                   </View>
                   <View style={styles.studentText}>
-                    <Text style={styles.studentName}>{nameOf(s)}</Text>
+                    <Text style={styles.studentName} numberOfLines={1}>{nameOf(s)}</Text>
                     <Text
                       style={[styles.studentSub, isDisq ? { color: colors.redSoftText } : null]}
                       numberOfLines={1}

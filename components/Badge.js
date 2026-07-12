@@ -13,7 +13,13 @@ export default function Badge({ label, color, background, borderColor, size = 10
       ]}
     >
       {icon || null}
-      <Text style={[styles.label, { color, fontSize: size }]}>{label}</Text>
+      <Text
+        style={[styles.label, { color, fontSize: size }]}
+        numberOfLines={1}
+        ellipsizeMode="tail"
+      >
+        {label}
+      </Text>
     </View>
   );
 }
@@ -27,8 +33,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 8,
     alignSelf: 'flex-start',
+    maxWidth: '100%',
   },
   label: {
     fontFamily: FONTS.extrabold,
+    flexShrink: 1,
   },
 });

@@ -504,6 +504,7 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     flexDirection: 'row',
     gap: 5,
     marginTop: 6,
+    flexWrap: 'wrap',
   },
   childBadge: {
     paddingVertical: 3,
