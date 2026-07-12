@@ -18,6 +18,7 @@ import {
   DotsIcon,
   BarsIcon,
   SparkleIcon,
+  BookIcon,
   ChevronRightIcon,
   CrownIcon,
   UsersIcon,
@@ -290,6 +291,23 @@ export default function AdminScreen({ navigation }) {
             </Card>
           </TouchableOpacity>
         </View>
+
+        <TouchableOpacity
+          activeOpacity={0.85}
+          style={styles.subjectsRowTouch}
+          onPress={() => navigation.navigate('AdminSubjects')}
+        >
+          <Card style={styles.subjectsRow}>
+            <IconBox size={36} radius={10} background={tints.green14}>
+              <BookIcon size={17} color={colors.green} />
+            </IconBox>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.navTitle}>Fanlar</Text>
+              <Text style={styles.navSub}>Platforma fan kategoriyalari</Text>
+            </View>
+            <ChevronRightIcon size={16} color={colors.textMuted} />
+          </Card>
+        </TouchableOpacity>
 
         <Text style={styles.sectionTitle}>Yangi markaz arizalari</Text>
         {pending.length === 0 ? (
@@ -882,6 +900,15 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     flexDirection: 'row',
     gap: 9,
     marginTop: 12,
+  },
+  subjectsRowTouch: {
+    marginTop: 9,
+  },
+  subjectsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
   },
   navCardTouch: {
     flex: 1,

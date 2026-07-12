@@ -49,7 +49,8 @@
         {
           "photosPermission": "Olympy profil rasmingizni yuklash uchun galereyaga ruxsat so'raydi."
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "extra": {
       "eas": {

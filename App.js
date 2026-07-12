@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import * as Notifications from 'expo-notifications';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   useFonts,
@@ -33,6 +34,17 @@ export default function App() {
     Manrope_700Bold,
     Manrope_800ExtraBold,
   });
+
+  // Foydalanuvchi bildirishnomani bosganda ishlaydi. Hozircha faqat data
+  // payloadni loglaymiz — to'liq deep-link routing bu vazifa doirasidan
+  // tashqarida. Muhimi: bosish ilovani buzmasligi kerak.
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response?.notification?.request?.content?.data;
+      console.log('[push] Bildirishnoma bosildi, data:', data);
+    });
+    return () => subscription.remove();
+  }, []);
 
   if (!fontsLoaded) {
     return <LoadingState />;

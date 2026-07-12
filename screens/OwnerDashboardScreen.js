@@ -11,7 +11,8 @@ import {
   ActivityIndicator,
   Linking,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, SafeAreaInsetsContext, useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../services/ThemeContext';
 import { FONTS } from '../constants/typography';
 import Card from '../components/Card';
@@ -24,16 +25,45 @@ import ActivityBarChart from '../components/ActivityBarChart';
 import LoadingState from '../components/LoadingState';
 import ErrorState from '../components/ErrorState';
 import useFetch from '../services/useFetch';
-import { ownerApi, managerApi, authApi } from '../services/api';
+import { ownerApi, managerApi, authApi, billingApi, downloadOlympiadResults } from '../services/api';
 import { PRIVACY_POLICY_URL } from '../services/config';
 import { useAuth } from '../services/AuthContext';
-import { PlusIcon, HomeIcon, UsersIcon, BarsIcon, SettingsIcon, ChevronRightIcon, CrownIcon } from '../components/icons/Icons';
+import SelectModal from '../components/SelectModal';
+import { UZBEKISTAN_REGIONS, UZBEKISTAN_DISTRICTS } from '../constants/uzbekistanDistricts';
+import ApplicationsScreen from './ApplicationsScreen';
+import ProctoringScreen from './ProctoringScreen';
+import ManagerStudentsScreen from './ManagerStudentsScreen';
+import ProgressBar from '../components/ProgressBar';
+import { PlusIcon, HomeIcon, UsersIcon, BarsIcon, SettingsIcon, ChevronRightIcon, CrownIcon, InboxIcon, EyeIcon, EditIcon, ShirtIcon, DownloadIcon, TrophyIcon, WarningIcon } from '../components/icons/Icons';
 
+// Brend rangi uchun tayyor palitra (websaytdagi urg'u ranglariga mos). To'liq
+// rang g'ildiragi o'rniga tanlanadigan namunalar — sodda va yetarli.
+const BRAND_SWATCHES = ['#2E90FA', '#7C58FA', '#10B981', '#F2B01E', '#F59E0B', '#EF4444', '#EC4899', '#14B8A6'];
+
+// Tashkilot turlari — RegisterScreen'dagi bilan bir xil ro'yxat (yangi markaz
+// qo'shishda ishlatiladi).
+const ORGANIZATION_TYPES = ["O'quv markaz", 'Maktab', 'Universitet/Kollej', 'Tashkilot', 'Online academy', 'Boshqa'];
+
+// Direktor paneli tab'lari. Arizalar (o'quvchi/o'qituvchi arizalari) va Nazorat
+// (jonli imtihon kuzatuvi) menejer bilan umumiy — ular markaz bo'yicha ishlaydi,
+// shu bois to'g'ridan-to'g'ri ManagerStudents/Applications/Proctoring ekranlarini
+// qayta ishlatamiz. Hisobot alohida tab emas — Panel'dan modal orqali ochiladi
+// (jami 5 ta tabni saqlash uchun).
 const OWNER_TABS = [
   { key: 'Panel', label: 'Panel', icon: (color) => <HomeIcon size={23} color={color} /> },
   { key: 'Jamoa', label: 'Jamoa', icon: (color) => <UsersIcon size={23} color={color} /> },
-  { key: 'Hisobot', label: 'Hisobot', icon: (color) => <BarsIcon size={23} color={color} /> },
+  { key: 'Arizalar', label: 'Arizalar', dot: true, icon: (color) => <InboxIcon size={23} color={color} /> },
+  { key: 'Nazorat', label: 'Nazorat', icon: (color) => <EyeIcon size={23} color={color} /> },
   { key: 'Sozlama', label: 'Sozlama', icon: (color) => <SettingsIcon size={23} color={color} /> },
+];
+
+// Tarif limiti bloklari (billing/limits). Har biri { used, limit, unlimited,
+// near_limit }; unlimited yoki limit yo'q — cheksiz (bar chizilmaydi).
+const LIMIT_ITEMS = [
+  { key: 'students', label: "Talabalar" },
+  { key: 'teachers', label: "Ustozlar" },
+  { key: 'olympiads', label: "Olimpiadalar" },
+  { key: 'ai_generations', label: "AI Savollar" },
 ];
 
 const makeAVATAR_COLORS = (colors, tints) => ([colors.purple, colors.blue, colors.green, colors.orange]);
@@ -47,40 +77,73 @@ export default function OwnerDashboardScreen({ navigation }) {
   const { colors, tints } = useTheme();
   const styles = makeStyles(colors, tints);
   const AVATAR_COLORS = makeAVATAR_COLORS(colors, tints);
+  const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
   const { data, loading, error, reload } = useFetch(async () => {
     const centersData = await ownerApi.myCenters().then((r) => r.data).catch(() => null);
     const centers = asArray(centersData);
     const center = centers[0];
     if (!center) return { center: null, stats: null, staff: [] };
-    const [stats, staff, trend] = await Promise.all([
+    const [stats, staff, trend, limits] = await Promise.all([
       ownerApi.centerStats(center.id).then((r) => r.data).catch(() => null),
       ownerApi.staffMemberships(center.id).then((r) => r.data).catch(() => null),
       // Panel tabida ham kichik grafik ko'rsatish uchun faollik trendini
       // oldindan yuklaymiz (premium bo'lmasa 403 → bo'sh).
       ownerApi.activityTrend(center.id).then((r) => r.data).catch(() => null),
+      // Tarif limitlari (premium EMAS — reja meta-ma'lumoti). Xato → null.
+      billingApi.limits(center.id).then((r) => r.data).catch(() => null),
     ]);
-    return { center, stats, staff: asArray(staff), trend: Array.isArray(trend) ? trend : [] };
+    return {
+      center,
+      stats,
+      staff: asArray(staff),
+      trend: Array.isArray(trend) ? trend : [],
+      limits: limits && typeof limits === 'object' ? limits : null,
+    };
   }, []);
 
   const [tab, setTab] = useState('Panel');
+  // Jamoa tabidagi segmentli almashtirgich: xodimlar ro'yxati yoki o'quvchilar.
+  const [jamoaView, setJamoaView] = useState('staff');
   const [member, setMember] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
   const [staffRole, setStaffRole] = useState('teacher');
   const [form, setForm] = useState({ full_name: '', phone: '', password: '', subject: '' });
   const [saving, setSaving] = useState(false);
+  // Hisobot endi alohida tab emas — Panel'dan ochiladigan modal.
+  const [reportOpen, setReportOpen] = useState(false);
   const [report, setReport] = useState(null);
   const [reportLoading, setReportLoading] = useState(false);
+  // Hisobot modalida natijalar eksporti uchun olimpiadalar ro'yxati.
+  const [olympiads, setOlympiads] = useState(null);
+  const [exporting, setExporting] = useState(null); // `${olympiadId}-${format}`
+
+  // Markazni tahrirlash modali (nom, viloyat/tuman, brend rangi, logotip).
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({ name: '', region: '', district: '', brand_color: '' });
+  const [logo, setLogo] = useState(null); // { uri, name, type } — yangi tanlangan logotip
+  const [editSaving, setEditSaving] = useState(false);
+  const [regionPicker, setRegionPicker] = useState(false);
+  const [districtPicker, setDistrictPicker] = useState(false);
+
+  // Yangi (qo'shimcha) markaz qo'shish modali. Tahrirlash modaliga o'xshash,
+  // faqat tashkilot turi maydoni bor va qiymatlar oldindan to'ldirilmaydi.
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: '', organization_type: ORGANIZATION_TYPES[0], region: '', district: '' });
+  const [createSaving, setCreateSaving] = useState(false);
+  const [createOrgPicker, setCreateOrgPicker] = useState(false);
+  const [createRegionPicker, setCreateRegionPicker] = useState(false);
+  const [createDistrictPicker, setCreateDistrictPicker] = useState(false);
 
   const center = data?.center;
   const stats = data?.stats || {};
   const staff = data?.staff || [];
 
-  // Hisobot tabi ochilganda (bir marta) top o'quvchilar va faollik trendini
+  // Hisobot modali ochilganda (bir marta) top o'quvchilar va faollik trendini
   // yuklaymiz. Premium bo'lmagan markazda backend 403 qaytaradi — buni
   // alohida ko'rsatamiz.
   useEffect(() => {
-    if (tab !== 'Hisobot' || !center || report) return;
+    if (!reportOpen || !center || report) return;
     setReportLoading(true);
     Promise.all([
       ownerApi.topStudents(center.id).then((r) => r.data).catch((e) => ({ __err: e })),
@@ -96,7 +159,20 @@ export default function OwnerDashboardScreen({ navigation }) {
         });
       })
       .finally(() => setReportLoading(false));
-  }, [tab, center, report]);
+  }, [reportOpen, center, report]);
+
+  // Hisobot modali ochilganda markaz olimpiadalarini (natijalar eksporti uchun)
+  // bir marta yuklaymiz. Xato bo'lsa bo'sh ro'yxat qoladi.
+  useEffect(() => {
+    if (!reportOpen || olympiads !== null) return;
+    ownerApi
+      .olympiads()
+      .then((r) => {
+        const raw = Array.isArray(r.data) ? r.data : r.data?.results || [];
+        setOlympiads(raw);
+      })
+      .catch(() => setOlympiads([]));
+  }, [reportOpen, olympiads]);
 
   if (loading) return <LoadingState message="Panel yuklanmoqda…" />;
   if (error && !data) return <ErrorState onRetry={reload} />;
@@ -207,6 +283,151 @@ export default function OwnerDashboardScreen({ navigation }) {
     );
   };
 
+  const openEdit = () => {
+    setEditForm({
+      name: center.name || '',
+      region: center.region || '',
+      district: center.district || '',
+      brand_color: center.brand_color || '',
+    });
+    setLogo(null);
+    setEditOpen(true);
+  };
+
+  const setEditField = (k, v) => setEditForm((prev) => ({ ...prev, [k]: v }));
+
+  const pickLogo = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Ruxsat kerak', "Rasm tanlash uchun galereyaga ruxsat bering.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+      });
+      if (result.canceled) return;
+      const asset = result.assets?.[0];
+      if (!asset?.uri) return;
+      setLogo({ uri: asset.uri, name: asset.fileName || undefined, type: asset.mimeType || undefined });
+    } catch (e) {
+      Alert.alert('Xatolik', "Rasmni tanlab bo'lmadi.");
+    }
+  };
+
+  const submitEdit = async () => {
+    if (editSaving) return;
+    if (!editForm.name.trim()) {
+      Alert.alert('Maydonlar', 'Markaz nomini kiriting.');
+      return;
+    }
+    setEditSaving(true);
+    try {
+      const payload = { name: editForm.name.trim() };
+      if (editForm.region) payload.region = editForm.region;
+      if (editForm.district) {
+        payload.district = editForm.district;
+        payload.city = editForm.district;
+      }
+      await ownerApi.updateCenter(center.id, payload);
+      if (editForm.brand_color) {
+        await ownerApi.updateCenterBranding(center.id, editForm.brand_color);
+      }
+      if (logo?.uri) {
+        await ownerApi.uploadCenterImage(center.id, logo.uri, { name: logo.name, type: logo.type });
+      }
+      setEditOpen(false);
+      setLogo(null);
+      Alert.alert('Saqlandi', "Markaz ma'lumotlari yangilandi.");
+      reload();
+    } catch (e) {
+      const err = e?.response?.data;
+      Alert.alert('Xatolik', err?.detail || err?.name?.[0] || "Markazni saqlab bo'lmadi.");
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  // Xodim rolini o'zgartirish (o'qituvchi ↔ menejer). A'zo tafsilot modalidan
+  // chaqiriladi; tasdiqlangach reload qilamiz.
+  const changeRole = (targetRole) => {
+    if (!member) return;
+    const mid = member.membership_id || member.id;
+    Alert.alert(
+      "Rolni o'zgartirish",
+      `${memberName(member)} ${roleLabelOf(targetRole).toLowerCase()} qilinsinmi?`,
+      [
+        { text: 'Bekor', style: 'cancel' },
+        {
+          text: 'Ha',
+          onPress: async () => {
+            try {
+              await ownerApi.changeMemberRole(center.id, mid, targetRole);
+              setMember(null);
+              reload();
+            } catch (e) {
+              Alert.alert('Xatolik', e?.response?.data?.detail || "Rolni o'zgartirib bo'lmadi.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const openCreate = () => {
+    setCreateForm({ name: '', organization_type: ORGANIZATION_TYPES[0], region: '', district: '' });
+    setCreateOpen(true);
+  };
+
+  const setCreateField = (k, v) => setCreateForm((prev) => ({ ...prev, [k]: v }));
+
+  const submitCreate = async () => {
+    if (createSaving) return;
+    if (!createForm.name.trim() || !createForm.region || !createForm.district) {
+      Alert.alert('Maydonlar', "Markaz nomi, viloyat va tumanni to'ldiring.");
+      return;
+    }
+    setCreateSaving(true);
+    try {
+      await ownerApi.registerCenter({
+        name: createForm.name.trim(),
+        organization_type: createForm.organization_type,
+        country: "O'zbekiston",
+        region: createForm.region,
+        district: createForm.district,
+        city: createForm.district || createForm.region,
+        subjects: [],
+      });
+      setCreateOpen(false);
+      Alert.alert('Qo\'shildi', "Yangi markaz yaratildi. Tasdiqlangach faollashadi.");
+      reload();
+    } catch (e) {
+      const err = e?.response?.data;
+      Alert.alert('Xatolik', err?.detail || err?.name?.[0] || "Markazni qo'shib bo'lmadi.");
+    } finally {
+      setCreateSaving(false);
+    }
+  };
+
+  const createDistricts = createForm.region ? UZBEKISTAN_DISTRICTS[createForm.region] || [] : [];
+
+  const doExport = async (olyId, fmt) => {
+    if (exporting) return;
+    setExporting(`${olyId}-${fmt}`);
+    try {
+      await downloadOlympiadResults(olyId, fmt);
+    } catch (e) {
+      Alert.alert('Xatolik', e?.response?.data?.detail || e?.message || "Natijalarni eksport qilib bo'lmadi.");
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const editDistricts = editForm.region ? UZBEKISTAN_DISTRICTS[editForm.region] || [] : [];
+
   const premiumCount = stats.premium_students_count ?? stats.premium_count ?? stats.premium_students;
   const studentsCount = stats.students_count ?? 0;
   const premiumShare =
@@ -243,6 +464,98 @@ export default function OwnerDashboardScreen({ navigation }) {
     </>
   );
 
+  const limits = data?.limits;
+
+  // Limit ogohlantirish banneri: biror resurs near_limit yoki to'la bo'lsa
+  // ko'rsatiladi (eng jiddiy holat rangni belgilaydi — to'la > tugayapti).
+  const renderLimitBanner = () => {
+    if (!limits) return null;
+    const flagged = LIMIT_ITEMS.map(({ key, label }) => {
+      const b = limits[key];
+      if (!b || b.unlimited || !b.limit) return null;
+      const used = b.used || 0;
+      const full = used >= b.limit;
+      const near = !!b.near_limit;
+      if (!full && !near) return null;
+      return { label, used, limit: b.limit, full };
+    }).filter(Boolean);
+    if (flagged.length === 0) return null;
+    const anyFull = flagged.some((f) => f.full);
+    const names = flagged.map((f) => f.label.toLowerCase()).join(', ');
+    return (
+      <Card
+        style={styles.limitBanner}
+        borderColor={anyFull ? tints.redBorder35 : tints.orangeBorder35}
+        background={anyFull ? tints.red12 : tints.orange13}
+      >
+        <View style={styles.limitBannerHead}>
+          <WarningIcon size={17} color={anyFull ? colors.red : colors.orange} />
+          <Text style={[styles.limitBannerTitle, { color: anyFull ? colors.redSoftText : colors.orangeSoftText }]}>
+            {anyFull ? "Tarif limiti to'ldi" : 'Tarif limiti tugayapti'}
+          </Text>
+        </View>
+        <Text style={styles.limitBannerText}>
+          {names} bo'yicha limit {anyFull ? "to'ldi" : 'tugayapti'}. Yangi qo'shish uchun tarifni yangilang.
+        </Text>
+        <Button
+          title="Tarifni yangilash"
+          variant={anyFull ? 'danger' : 'gold'}
+          height={42}
+          radius={11}
+          fontSize={13.5}
+          style={{ marginTop: 12 }}
+          onPress={() => navigation.navigate('OwnerPremium', { centerId: center.id, centerName: stats.name || center.name })}
+        />
+      </Card>
+    );
+  };
+
+  const renderLimitGrid = () => {
+    if (!limits) return null;
+    return (
+      <View style={styles.limitGrid}>
+        {LIMIT_ITEMS.map(({ key, label }) => {
+          const b = limits[key] || {};
+          const unlimited = !!b.unlimited;
+          const limit = b.limit;
+          const used = b.used || 0;
+          const capped = !unlimited && limit > 0;
+          const pct = capped ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+          const full = capped && used >= limit;
+          const near = !!b.near_limit;
+          const barColor = full ? colors.red : near ? colors.orange : colors.blue;
+          return (
+            <Card key={key} style={styles.limitCard}>
+              <Text style={styles.limitLabel} numberOfLines={1}>{label}</Text>
+              <Text style={styles.limitValue}>
+                {used}
+                {unlimited ? <Text style={styles.limitInfinity}>  ∞</Text> : limit ? <Text style={styles.limitCap}> / {limit}</Text> : null}
+              </Text>
+              {capped ? <ProgressBar progress={pct} color={barColor} height={6} style={{ marginTop: 8 }} /> : null}
+            </Card>
+          );
+        })}
+      </View>
+    );
+  };
+
+  const renderJamoaToggle = () => (
+    <View style={styles.segment}>
+      {[['staff', 'Xodimlar'], ['students', "O'quvchilar"]].map(([key, label]) => (
+        <TouchableOpacity
+          key={key}
+          activeOpacity={0.85}
+          onPress={() => setJamoaView(key)}
+          style={[styles.segmentOption, jamoaView === key ? styles.segmentOptionOn : null]}
+        >
+          <Text style={[styles.segmentText, jamoaView === key ? styles.segmentTextOn : null]}>
+            {label}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+
   const renderTeamRow = (m, i) => (
     <TouchableOpacity key={m.membership_id || m.id || i} activeOpacity={0.85} onPress={() => setMember(m)}>
       <Card style={styles.memberCard}>
@@ -257,6 +570,35 @@ export default function OwnerDashboardScreen({ navigation }) {
       </Card>
     </TouchableOpacity>
   );
+
+  // Arizalar / Nazorat va Jamoa'ning "O'quvchilar" ko'rinishi — to'liq ekranli,
+  // o'z SafeAreaView'iga ega bo'lgan qayta ishlatilgan ekranlar. Ularni asosiy
+  // ScrollView ichiga joylash mumkin emas (ichma-ich scroll/safe-area), shu bois
+  // alohida return orqali TabBar bilan birga to'g'ridan-to'g'ri render qilamiz.
+  if (tab === 'Arizalar' || tab === 'Nazorat' || (tab === 'Jamoa' && jamoaView === 'students')) {
+    return (
+      <View style={styles.screen}>
+        {tab === 'Arizalar' ? (
+          <ApplicationsScreen />
+        ) : tab === 'Nazorat' ? (
+          <ProctoringScreen />
+        ) : (
+          <SafeAreaView style={styles.screen} edges={['top']}>
+            <View style={styles.jamoaBar}>{renderJamoaToggle()}</View>
+            {/* ManagerStudentsScreen o'z SafeAreaView(top)'iga ega — yuqoridagi
+                segment allaqachon safe-area'ni egallagani uchun bu yerda top
+                inset'ni 0 ga tushirib ikki karra bo'shliqning oldini olamiz. */}
+            <SafeAreaInsetsContext.Provider
+              value={{ top: 0, bottom: insets.bottom, left: insets.left, right: insets.right }}
+            >
+              <ManagerStudentsScreen />
+            </SafeAreaInsetsContext.Provider>
+          </SafeAreaView>
+        )}
+        <TabBar items={OWNER_TABS} activeKey={tab} onPress={setTab} />
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -279,6 +621,8 @@ export default function OwnerDashboardScreen({ navigation }) {
         {tab === 'Panel' ? (
           <>
             {renderKpis()}
+            {renderLimitBanner()}
+            {renderLimitGrid()}
             {data?.trend?.length ? (
               <Card style={styles.panelChart}>
                 <Text style={styles.cardHeading}>Faollik — so'nggi {data.trend.length} oy</Text>
@@ -295,6 +639,42 @@ export default function OwnerDashboardScreen({ navigation }) {
                 />
               </Card>
             ) : null}
+            <TouchableOpacity activeOpacity={0.85} onPress={() => setReportOpen(true)}>
+              <Card style={styles.reportEntry}>
+                <View style={styles.reportEntryIcon}>
+                  <BarsIcon size={19} color={colors.blue} />
+                </View>
+                <View style={styles.reportEntryText}>
+                  <Text style={styles.reportEntryTitle}>Hisobot va tahlil</Text>
+                  <Text style={styles.reportEntrySub}>Top o'quvchilar, faollik trendi, premium</Text>
+                </View>
+                <ChevronRightIcon size={15} color={colors.textMuted} />
+              </Card>
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('CenterRanking')}>
+              <Card style={styles.reportEntry}>
+                <View style={[styles.reportEntryIcon, { backgroundColor: tints.gold10 }]}>
+                  <TrophyIcon size={19} color={colors.gold} />
+                </View>
+                <View style={styles.reportEntryText}>
+                  <Text style={styles.reportEntryTitle}>Markazlar reytingi</Text>
+                  <Text style={styles.reportEntrySub}>Barcha markazlar o'rtacha ball bo'yicha</Text>
+                </View>
+                <ChevronRightIcon size={15} color={colors.textMuted} />
+              </Card>
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('QuestionDifficulty')}>
+              <Card style={styles.reportEntry}>
+                <View style={[styles.reportEntryIcon, { backgroundColor: tints.purple16 }]}>
+                  <BarsIcon size={19} color={colors.purple} />
+                </View>
+                <View style={styles.reportEntryText}>
+                  <Text style={styles.reportEntryTitle}>Savollar tahlili</Text>
+                  <Text style={styles.reportEntrySub}>Qiyinlik darajasi bo'yicha to'g'rilik</Text>
+                </View>
+                <ChevronRightIcon size={15} color={colors.textMuted} />
+              </Card>
+            </TouchableOpacity>
             <View style={styles.sectionRow}>
               <Text style={styles.sectionTitle}>Jamoa</Text>
               <TouchableOpacity activeOpacity={0.7} onPress={() => setTab('Jamoa')}>
@@ -315,6 +695,7 @@ export default function OwnerDashboardScreen({ navigation }) {
 
         {tab === 'Jamoa' ? (
           <>
+            <View style={styles.jamoaToggleWrap}>{renderJamoaToggle()}</View>
             <Text style={styles.sectionTitle}>Jamoa a'zolari</Text>
             <View style={styles.team}>
               {staff.length === 0 ? (
@@ -332,8 +713,15 @@ export default function OwnerDashboardScreen({ navigation }) {
           </>
         ) : null}
 
-        {tab === 'Hisobot' ? (
-          <View style={styles.reportWrap}>
+        <Modal visible={reportOpen} animationType="slide" onRequestClose={() => setReportOpen(false)}>
+          <SafeAreaView style={styles.screen} edges={['top']}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Hisobot</Text>
+              <TouchableOpacity activeOpacity={0.7} onPress={() => setReportOpen(false)}>
+                <Text style={styles.modalClose}>Yopish</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={() => navigation.navigate('OwnerPremium', { centerId: center.id, centerName: stats.name || center.name })}
@@ -399,8 +787,46 @@ export default function OwnerDashboardScreen({ navigation }) {
                 )}
               </>
             )}
-          </View>
-        ) : null}
+
+            <Text style={styles.sectionTitle}>Natijalarni eksport qilish</Text>
+            {olympiads === null ? (
+              <ActivityIndicator color={colors.blue} style={{ marginTop: 16 }} />
+            ) : olympiads.length === 0 ? (
+              <Card style={styles.memberCard}>
+                <Text style={styles.emptyInline}>Eksport uchun tadbir topilmadi</Text>
+              </Card>
+            ) : (
+              <View style={styles.team}>
+                {olympiads.map((o) => (
+                  <Card key={o.id} style={styles.exportCard}>
+                    <Text style={styles.exportName} numberOfLines={1}>{o.title || o.name || 'Tadbir'}</Text>
+                    <View style={styles.exportBtns}>
+                      {[['csv', 'CSV'], ['xlsx', 'Excel'], ['pdf', 'PDF']].map(([fmt, label]) => (
+                        <TouchableOpacity
+                          key={fmt}
+                          activeOpacity={0.8}
+                          disabled={!!exporting}
+                          onPress={() => doExport(o.id, fmt)}
+                          style={styles.exportBtn}
+                        >
+                          {exporting === `${o.id}-${fmt}` ? (
+                            <ActivityIndicator size="small" color={colors.blueLight} />
+                          ) : (
+                            <>
+                              <DownloadIcon size={12} color={colors.blueLight} />
+                              <Text style={styles.exportBtnText}>{label}</Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </Card>
+                ))}
+              </View>
+            )}
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
 
         {tab === 'Sozlama' ? (
           <View style={styles.settingsWrap}>
@@ -410,6 +836,33 @@ export default function OwnerDashboardScreen({ navigation }) {
                 {[center.region, center.status === 'approved' || center.status === 'active' ? 'Tasdiqlangan' : center.status].filter(Boolean).join(' · ')}
               </Text>
             </Card>
+            <TouchableOpacity activeOpacity={0.85} onPress={openEdit}>
+              <Card style={styles.settingRow}>
+                <View style={styles.settingLeft}>
+                  <EditIcon size={16} color={colors.blueLight} />
+                  <Text style={styles.settingText}>Markazni tahrirlash</Text>
+                </View>
+                <Text style={styles.settingArrow}>›</Text>
+              </Card>
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.85} onPress={openCreate}>
+              <Card style={styles.settingRow}>
+                <View style={styles.settingLeft}>
+                  <PlusIcon size={16} color={colors.blueLight} strokeWidth={2.4} />
+                  <Text style={styles.settingText}>Yangi markaz qo'shish</Text>
+                </View>
+                <Text style={styles.settingArrow}>›</Text>
+              </Card>
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('OwnerShop', { centerId: center.id })}>
+              <Card style={styles.settingRow}>
+                <View style={styles.settingLeft}>
+                  <ShirtIcon size={16} color={colors.blueLight} />
+                  <Text style={styles.settingText}>Do'kon boshqaruvi</Text>
+                </View>
+                <Text style={styles.settingArrow}>›</Text>
+              </Card>
+            </TouchableOpacity>
             <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('Profile')}>
               <Card style={styles.settingRow}>
                 <Text style={styles.settingText}>Profil</Text>
@@ -503,13 +956,190 @@ export default function OwnerDashboardScreen({ navigation }) {
                   <Text style={styles.detailValue}>{member.user.phone}</Text>
                 </View>
               ) : null}
-              <Button title="Markazdan chiqarish" variant="danger" height={48} radius={12} fontSize={14} style={{ marginTop: 16 }} onPress={removeMember} />
+              {member.role === 'teacher' || member.role === 'manager' ? (
+                <Button
+                  title={member.role === 'manager' ? "O'qituvchi qilish" : 'Menejer qilish'}
+                  variant="dark"
+                  height={48}
+                  radius={12}
+                  fontSize={14}
+                  style={{ marginTop: 16 }}
+                  onPress={() => changeRole(member.role === 'manager' ? 'teacher' : 'manager')}
+                />
+              ) : null}
+              <Button title="Markazdan chiqarish" variant="danger" height={48} radius={12} fontSize={14} style={{ marginTop: 10 }} onPress={removeMember} />
               <TouchableOpacity activeOpacity={0.7} onPress={() => setMember(null)}>
                 <Text style={styles.cancel}>Yopish</Text>
               </TouchableOpacity>
             </>
           ) : null}
         </View>
+      </Modal>
+
+      {/* Markazni tahrirlash modal */}
+      <Modal visible={editOpen} transparent animationType="slide" onRequestClose={() => (editSaving ? null : setEditOpen(false))}>
+        <TouchableOpacity activeOpacity={1} style={styles.overlay} onPress={() => (editSaving ? null : setEditOpen(false))} />
+        <View style={styles.sheet}>
+          <View style={styles.handle} />
+          <Text style={styles.sheetTitle}>Markazni tahrirlash</Text>
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={styles.editScroll}>
+            <TextInput style={styles.sheetInput} placeholder="Markaz nomi" placeholderTextColor={colors.textMuted} value={editForm.name} onChangeText={(v) => setEditField('name', v)} />
+            <TouchableOpacity activeOpacity={0.8} style={styles.selectField} onPress={() => setRegionPicker(true)}>
+              <Text style={editForm.region ? styles.selectValue : styles.selectPlaceholder}>
+                {editForm.region || 'Viloyat'}
+              </Text>
+              <Text style={styles.settingArrow}>›</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={[styles.selectField, !editForm.region ? styles.selectDisabled : null]}
+              disabled={!editForm.region}
+              onPress={() => setDistrictPicker(true)}
+            >
+              <Text style={editForm.district ? styles.selectValue : styles.selectPlaceholder}>
+                {editForm.district || 'Tuman'}
+              </Text>
+              <Text style={styles.settingArrow}>›</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.editLabel}>Brend rangi</Text>
+            <View style={styles.swatchRow}>
+              {BRAND_SWATCHES.map((hex) => (
+                <TouchableOpacity
+                  key={hex}
+                  activeOpacity={0.8}
+                  onPress={() => setEditField('brand_color', hex)}
+                  style={[
+                    styles.swatch,
+                    { backgroundColor: hex },
+                    editForm.brand_color === hex ? styles.swatchOn : null,
+                  ]}
+                />
+              ))}
+            </View>
+
+            <Text style={styles.editLabel}>Logotip</Text>
+            <TouchableOpacity activeOpacity={0.85} style={styles.logoBtn} onPress={pickLogo}>
+              <Text style={styles.logoBtnText}>{logo ? 'Logotip tanlandi ✓' : 'Galereyadan rasm tanlash'}</Text>
+            </TouchableOpacity>
+          </ScrollView>
+          <Button
+            title={editSaving ? 'Saqlanmoqda…' : 'Saqlash'}
+            variant="success"
+            height={50}
+            radius={13}
+            fontSize={15}
+            style={{ marginTop: 14 }}
+            disabled={editSaving}
+            onPress={submitEdit}
+          />
+          <TouchableOpacity activeOpacity={0.7} onPress={() => (editSaving ? null : setEditOpen(false))}>
+            <Text style={styles.cancel}>Bekor qilish</Text>
+          </TouchableOpacity>
+        </View>
+        <SelectModal
+          visible={regionPicker}
+          title="Viloyat"
+          options={UZBEKISTAN_REGIONS}
+          selected={editForm.region}
+          onSelect={(v) => {
+            setEditForm((prev) => ({ ...prev, region: v, district: '' }));
+            setRegionPicker(false);
+          }}
+          onClose={() => setRegionPicker(false)}
+        />
+        <SelectModal
+          visible={districtPicker}
+          title="Tuman"
+          options={editDistricts}
+          selected={editForm.district}
+          onSelect={(v) => {
+            setEditField('district', v);
+            setDistrictPicker(false);
+          }}
+          onClose={() => setDistrictPicker(false)}
+        />
+      </Modal>
+
+      {/* Yangi markaz qo'shish modal */}
+      <Modal visible={createOpen} transparent animationType="slide" onRequestClose={() => (createSaving ? null : setCreateOpen(false))}>
+        <TouchableOpacity activeOpacity={1} style={styles.overlay} onPress={() => (createSaving ? null : setCreateOpen(false))} />
+        <View style={styles.sheet}>
+          <View style={styles.handle} />
+          <Text style={styles.sheetTitle}>Yangi markaz qo'shish</Text>
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={styles.editScroll}>
+            <TextInput style={styles.sheetInput} placeholder="Markaz nomi" placeholderTextColor={colors.textMuted} value={createForm.name} onChangeText={(v) => setCreateField('name', v)} />
+            <TouchableOpacity activeOpacity={0.8} style={styles.selectField} onPress={() => setCreateOrgPicker(true)}>
+              <Text style={createForm.organization_type ? styles.selectValue : styles.selectPlaceholder}>
+                {createForm.organization_type || 'Tashkilot turi'}
+              </Text>
+              <Text style={styles.settingArrow}>›</Text>
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.8} style={styles.selectField} onPress={() => setCreateRegionPicker(true)}>
+              <Text style={createForm.region ? styles.selectValue : styles.selectPlaceholder}>
+                {createForm.region || 'Viloyat'}
+              </Text>
+              <Text style={styles.settingArrow}>›</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={[styles.selectField, !createForm.region ? styles.selectDisabled : null]}
+              disabled={!createForm.region}
+              onPress={() => setCreateDistrictPicker(true)}
+            >
+              <Text style={createForm.district ? styles.selectValue : styles.selectPlaceholder}>
+                {createForm.district || 'Tuman'}
+              </Text>
+              <Text style={styles.settingArrow}>›</Text>
+            </TouchableOpacity>
+          </ScrollView>
+          <Button
+            title={createSaving ? 'Saqlanmoqda…' : "Markaz qo'shish"}
+            variant="success"
+            height={50}
+            radius={13}
+            fontSize={15}
+            style={{ marginTop: 14 }}
+            disabled={createSaving}
+            onPress={submitCreate}
+          />
+          <TouchableOpacity activeOpacity={0.7} onPress={() => (createSaving ? null : setCreateOpen(false))}>
+            <Text style={styles.cancel}>Bekor qilish</Text>
+          </TouchableOpacity>
+        </View>
+        <SelectModal
+          visible={createOrgPicker}
+          title="Tashkilot turi"
+          options={ORGANIZATION_TYPES}
+          selected={createForm.organization_type}
+          onSelect={(v) => {
+            setCreateField('organization_type', v);
+            setCreateOrgPicker(false);
+          }}
+          onClose={() => setCreateOrgPicker(false)}
+        />
+        <SelectModal
+          visible={createRegionPicker}
+          title="Viloyat"
+          options={UZBEKISTAN_REGIONS}
+          selected={createForm.region}
+          onSelect={(v) => {
+            setCreateForm((prev) => ({ ...prev, region: v, district: '' }));
+            setCreateRegionPicker(false);
+          }}
+          onClose={() => setCreateRegionPicker(false)}
+        />
+        <SelectModal
+          visible={createDistrictPicker}
+          title="Tuman"
+          options={createDistricts}
+          selected={createForm.district}
+          onSelect={(v) => {
+            setCreateField('district', v);
+            setCreateDistrictPicker(false);
+          }}
+          onClose={() => setCreateDistrictPicker(false)}
+        />
       </Modal>
     </SafeAreaView>
   );
@@ -532,6 +1162,16 @@ const makeStyles = (colors, tints) => StyleSheet.create({
   premiumKpiLabel: { fontSize: 11.5, fontFamily: FONTS.bold, color: colors.textSecondary },
   premiumKpiValue: { fontSize: 22, fontFamily: FONTS.extrabold, color: colors.purple, marginTop: 2 },
   premiumKpiShare: { fontSize: 12, fontFamily: FONTS.bold, color: colors.textSecondary },
+  limitBanner: { marginTop: 12, padding: 14 },
+  limitBannerHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  limitBannerTitle: { fontSize: 13.5, fontFamily: FONTS.extrabold },
+  limitBannerText: { fontSize: 11.5, fontFamily: FONTS.semibold, color: colors.textSecondary, marginTop: 6, lineHeight: 16 },
+  limitGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 },
+  limitCard: { flexBasis: '47%', flexGrow: 1, paddingVertical: 12, paddingHorizontal: 14 },
+  limitLabel: { fontSize: 11, fontFamily: FONTS.bold, color: colors.textSecondary },
+  limitValue: { fontSize: 17, fontFamily: FONTS.extrabold, color: colors.text, marginTop: 3 },
+  limitCap: { fontSize: 12, fontFamily: FONTS.bold, color: colors.textMuted },
+  limitInfinity: { fontSize: 15, fontFamily: FONTS.extrabold, color: colors.blueLight },
   panelChart: { padding: 16, marginTop: 12 },
   sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 22, marginBottom: 10 },
   sectionTitle: { fontSize: 15, fontFamily: FONTS.extrabold, color: colors.text, marginTop: 22, marginBottom: 10 },
@@ -559,6 +1199,21 @@ const makeStyles = (colors, tints) => StyleSheet.create({
   },
   addBtnText: { fontSize: 13, fontFamily: FONTS.extrabold, color: colors.blueLight },
   reportWrap: { marginTop: 4 },
+  segment: { flexDirection: 'row', gap: 8 },
+  segmentOption: { flex: 1, height: 40, borderRadius: 11, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.surfaceDeep, alignItems: 'center', justifyContent: 'center' },
+  segmentOptionOn: { borderColor: colors.blue, backgroundColor: tints.blue14 },
+  segmentText: { fontSize: 13, fontFamily: FONTS.bold, color: colors.textSecondary },
+  segmentTextOn: { fontFamily: FONTS.extrabold, color: colors.blueLight },
+  jamoaToggleWrap: { marginTop: 16, marginBottom: 4 },
+  jamoaBar: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 6 },
+  reportEntry: { marginTop: 22, padding: 15, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  reportEntryIcon: { width: 42, height: 42, borderRadius: 12, backgroundColor: tints.blue14, alignItems: 'center', justifyContent: 'center' },
+  reportEntryText: { flex: 1 },
+  reportEntryTitle: { fontSize: 14.5, fontFamily: FONTS.extrabold, color: colors.text },
+  reportEntrySub: { fontSize: 11, fontFamily: FONTS.semibold, color: colors.textSecondary, marginTop: 2 },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4 },
+  modalTitle: { fontSize: 19, fontFamily: FONTS.extrabold, color: colors.text },
+  modalClose: { fontSize: 14, fontFamily: FONTS.bold, color: colors.blue },
   premiumEntry: { marginTop: 16, padding: 15, flexDirection: 'row', alignItems: 'center', gap: 12 },
   premiumEntryIcon: {
     width: 42,
@@ -581,8 +1236,56 @@ const makeStyles = (colors, tints) => StyleSheet.create({
   centerInfoName: { fontSize: 16, fontFamily: FONTS.extrabold, color: colors.text },
   centerInfoSub: { fontSize: 12, fontFamily: FONTS.semibold, color: colors.textSecondary, marginTop: 3 },
   settingRow: { paddingVertical: 16, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  settingLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   settingText: { fontSize: 14, fontFamily: FONTS.extrabold, color: colors.text },
   settingArrow: { fontSize: 20, fontFamily: FONTS.bold, color: colors.textMuted },
+  exportCard: { paddingVertical: 13, paddingHorizontal: 15 },
+  exportName: { fontSize: 13.5, fontFamily: FONTS.extrabold, color: colors.text },
+  exportBtns: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  exportBtn: {
+    flex: 1,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surfaceDeep,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
+  exportBtnText: { fontSize: 12, fontFamily: FONTS.extrabold, color: colors.blueLight },
+  editScroll: { maxHeight: 360 },
+  selectField: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 9,
+  },
+  selectDisabled: { opacity: 0.5 },
+  selectValue: { fontSize: 14, fontFamily: FONTS.bold, color: colors.text },
+  selectPlaceholder: { fontSize: 14, fontFamily: FONTS.bold, color: colors.textMuted },
+  editLabel: { fontSize: 12, fontFamily: FONTS.extrabold, color: colors.textSecondary, marginTop: 8, marginBottom: 8 },
+  swatchRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 4 },
+  swatch: { width: 36, height: 36, borderRadius: 18, borderWidth: 2, borderColor: 'transparent' },
+  swatchOn: { borderColor: colors.text },
+  logoBtn: {
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.borderDashed,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  logoBtnText: { fontSize: 13, fontFamily: FONTS.extrabold, color: colors.blueLight },
   overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.overlay },
   sheet: {
     position: 'absolute',

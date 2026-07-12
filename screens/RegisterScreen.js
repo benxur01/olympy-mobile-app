@@ -13,21 +13,33 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../services/ThemeContext';
 import { FONTS } from '../constants/typography';
 import Button from '../components/Button';
+import Chip from '../components/Chip';
+import SelectModal from '../components/SelectModal';
 import { BackIcon, ChevronDownIcon, TelegramIcon, EyeIcon } from '../components/icons/Icons';
 import { authApi } from '../services/api';
 import { useAuth } from '../services/AuthContext';
 import { routeForUser } from '../services/roles';
+import { UZBEKISTAN_REGIONS, UZBEKISTAN_DISTRICTS } from '../constants/uzbekistanDistricts';
+
+const ORGANIZATION_TYPES = ["O'quv markaz", 'Maktab', 'Universitet/Kollej', 'Tashkilot', 'Online academy', 'Boshqa'];
 
 export default function RegisterScreen({ navigation }) {
   const { colors, tints } = useTheme();
   const styles = makeStyles(colors, tints);
-  const { register } = useAuth();
+  const { register, registerOrganization } = useAuth();
+  const [registrationType, setRegistrationType] = useState('student'); // 'student' | 'organization'
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [referralCode, setReferralCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [step, setStep] = useState(1);
+  // Tashkilot (step 3) maydonlari.
+  const [centerName, setCenterName] = useState('');
+  const [orgType, setOrgType] = useState(ORGANIZATION_TYPES[0]);
+  const [region, setRegion] = useState('');
+  const [district, setDistrict] = useState('');
+  const [openPicker, setOpenPicker] = useState(null); // 'orgType' | 'region' | 'district'
   const [deepLink, setDeepLink] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -116,14 +128,25 @@ export default function RegisterScreen({ navigation }) {
         await authApi.verifyOtp(fullPhone(), code);
         setOtpVerified(true);
         setOtpVerifying(false);
-        await finishRegister();
+        await afterVerify();
       } catch (e) {
         setOtpVerifying(false);
         setError(e.response?.data?.detail || "Kod noto'g'ri yoki muddati o'tgan. Qayta urinib ko'ring.");
       }
       return;
     }
-    finishRegister();
+    afterVerify();
+  };
+
+  // Telefon tasdiqlangach: o'quvchi to'g'ridan-to'g'ri ro'yxatdan o'tadi;
+  // tashkilot uchun avval markaz ma'lumotlarini yig'amiz (step 3).
+  const afterVerify = async () => {
+    if (registrationType === 'organization') {
+      setError('');
+      setStep(3);
+      return;
+    }
+    await finishRegister();
   };
 
   const finishRegister = async () => {
@@ -150,6 +173,47 @@ export default function RegisterScreen({ navigation }) {
     }
   };
 
+  // Step 3 — tashkilot/markaz ma'lumotlarini yig'ib, direktor hisobi bilan
+  // birga backendga yuboramiz. Muvaffaqiyat/xatolikni finishRegister kabi
+  // qayta ishlaymiz, faqat endpoint va payload boshqacha.
+  const finishOrganization = async () => {
+    if (!centerName.trim() || !region || !district) {
+      setError("Markaz nomi, viloyat va tumanni to'ldiring");
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const result = await registerOrganization({
+        full_name: fullName.trim(),
+        phone: fullPhone(),
+        password,
+        ...(referralCode.trim() ? { referral_code: referralCode.trim().toUpperCase() } : {}),
+        center: {
+          name: centerName.trim(),
+          organization_type: orgType,
+          country: "O'zbekiston",
+          region,
+          district,
+          city: district || region,
+          subjects: [],
+        },
+      });
+      navigation.reset({ index: 0, routes: [{ name: routeForUser(result.user) }] });
+    } catch (e) {
+      setError(
+        e.response?.data?.detail ||
+          "Ro'yxatdan o'tishda xatolik. Telegram botda telefonni tasdiqlaganingizga ishonch hosil qiling."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const isOrg = registrationType === 'organization';
+  const totalSteps = isOrg ? 4 : 3;
+  const districtOptions = region ? UZBEKISTAN_DISTRICTS[region] || [] : [];
+
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView
@@ -161,22 +225,52 @@ export default function RegisterScreen({ navigation }) {
         <View style={styles.topRow}>
           <TouchableOpacity
             activeOpacity={0.7}
-            onPress={() => (step === 2 ? setStep(1) : navigation.goBack())}
+            onPress={() => (step > 1 ? setStep(step - 1) : navigation.goBack())}
             style={styles.backBtn}
           >
             <BackIcon size={16} />
           </TouchableOpacity>
           <View style={styles.stepsRow}>
-            <View style={[styles.step, { backgroundColor: colors.blue }]} />
-            <View style={[styles.step, { backgroundColor: step >= 2 ? colors.blue : colors.barIdle }]} />
-            <View style={[styles.step, { backgroundColor: colors.barIdle }]} />
+            {Array.from({ length: totalSteps }).map((_, i) => (
+              <View
+                key={i}
+                style={[styles.step, { backgroundColor: step >= i + 1 ? colors.blue : colors.barIdle }]}
+              />
+            ))}
           </View>
-          <Text style={styles.stepText}>{step}/3</Text>
+          <Text style={styles.stepText}>{step}/{totalSteps}</Text>
         </View>
-        <Text style={styles.title}>Ma'lumotlaringiz</Text>
-        <Text style={styles.subtitle}>Telefon raqamingizni Telegram orqali tasdiqlang</Text>
+        <Text style={styles.title}>
+          {step === 3 ? "Tashkilot ma'lumotlari" : "Ma'lumotlaringiz"}
+        </Text>
+        <Text style={styles.subtitle}>
+          {step === 3
+            ? "Markazingiz Platform Admin tasdiqlagach faollashadi"
+            : 'Telefon raqamingizni Telegram orqali tasdiqlang'}
+        </Text>
 
-        <Text style={styles.fieldLabel}>TO'LIQ ISM</Text>
+        {step === 1 ? (
+          <View style={styles.modeRow}>
+            <Chip
+              label="O'quvchi"
+              active={registrationType === 'student'}
+              radius={12}
+              style={styles.modeChip}
+              onPress={() => setRegistrationType('student')}
+            />
+            <Chip
+              label="Ta'lim markazi"
+              active={registrationType === 'organization'}
+              radius={12}
+              style={styles.modeChip}
+              onPress={() => setRegistrationType('organization')}
+            />
+          </View>
+        ) : null}
+
+        {step !== 3 ? (
+          <>
+        <Text style={styles.fieldLabel}>{isOrg ? "MAS'UL SHAXS ISMI" : "TO'LIQ ISM"}</Text>
         <TextInput
           style={styles.inputText}
           placeholder="Ismingiz va familiyangiz"
@@ -231,6 +325,56 @@ export default function RegisterScreen({ navigation }) {
           maxLength={12}
           editable={step === 1}
         />
+          </>
+        ) : null}
+
+        {step === 3 ? (
+          <>
+            <Text style={styles.fieldLabel}>MARKAZ NOMI</Text>
+            <TextInput
+              style={styles.inputText}
+              placeholder="Masalan: Smart Education"
+              placeholderTextColor={colors.textMuted}
+              value={centerName}
+              onChangeText={setCenterName}
+            />
+
+            <Text style={styles.fieldLabel}>TASHKILOT TURI</Text>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={styles.selectField}
+              onPress={() => setOpenPicker('orgType')}
+            >
+              <Text style={styles.selectValue}>{orgType}</Text>
+              <ChevronDownIcon size={12} />
+            </TouchableOpacity>
+
+            <Text style={styles.fieldLabel}>VILOYAT</Text>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={styles.selectField}
+              onPress={() => setOpenPicker('region')}
+            >
+              <Text style={region ? styles.selectValue : styles.selectPlaceholder}>
+                {region || 'Viloyatni tanlang'}
+              </Text>
+              <ChevronDownIcon size={12} />
+            </TouchableOpacity>
+
+            <Text style={styles.fieldLabel}>TUMAN / SHAHAR</Text>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={[styles.selectField, region ? null : styles.selectFieldDisabled]}
+              onPress={() => region && setOpenPicker('district')}
+              disabled={!region}
+            >
+              <Text style={district ? styles.selectValue : styles.selectPlaceholder}>
+                {district || (region ? 'Tumanni tanlang' : 'Avval viloyatni tanlang')}
+              </Text>
+              <ChevronDownIcon size={12} />
+            </TouchableOpacity>
+          </>
+        ) : null}
 
         {step === 2 ? (
           <View style={styles.otpCard}>
@@ -292,7 +436,7 @@ export default function RegisterScreen({ navigation }) {
 
         <TouchableOpacity
           activeOpacity={0.8}
-          onPress={step === 1 ? startVerification : submitStep2}
+          onPress={step === 1 ? startVerification : step === 2 ? submitStep2 : finishOrganization}
           disabled={loading || otpVerifying}
           style={[styles.submit, loading || otpVerifying ? { opacity: 0.7 } : null]}
         >
@@ -300,7 +444,11 @@ export default function RegisterScreen({ navigation }) {
             <ActivityIndicator color={colors.white} />
           ) : (
             <Text style={styles.submitText}>
-              {step === 1 ? 'Tasdiqlash kodini olish' : "Ro'yxatdan o'tishni yakunlash"}
+              {step === 1
+                ? 'Tasdiqlash kodini olish'
+                : step === 2 && isOrg
+                ? 'Davom etish'
+                : "Ro'yxatdan o'tishni yakunlash"}
             </Text>
           )}
         </TouchableOpacity>
@@ -311,6 +459,41 @@ export default function RegisterScreen({ navigation }) {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+
+      <SelectModal
+        visible={openPicker === 'orgType'}
+        title="Tashkilot turi"
+        options={ORGANIZATION_TYPES}
+        selected={orgType}
+        onSelect={(v) => {
+          setOrgType(v);
+          setOpenPicker(null);
+        }}
+        onClose={() => setOpenPicker(null)}
+      />
+      <SelectModal
+        visible={openPicker === 'region'}
+        title="Viloyatni tanlang"
+        options={UZBEKISTAN_REGIONS}
+        selected={region}
+        onSelect={(v) => {
+          setRegion(v);
+          setDistrict('');
+          setOpenPicker(null);
+        }}
+        onClose={() => setOpenPicker(null)}
+      />
+      <SelectModal
+        visible={openPicker === 'district'}
+        title="Tumanni tanlang"
+        options={districtOptions}
+        selected={district}
+        onSelect={(v) => {
+          setDistrict(v);
+          setOpenPicker(null);
+        }}
+        onClose={() => setOpenPicker(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -370,6 +553,17 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 4,
   },
+  modeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 18,
+  },
+  modeChip: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingVertical: 12,
+    alignSelf: 'auto',
+  },
   fieldLabel: {
     fontSize: 12,
     fontFamily: FONTS.extrabold,
@@ -388,6 +582,30 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     fontSize: 15,
     fontFamily: FONTS.bold,
     color: colors.text,
+  },
+  selectField: {
+    height: 52,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+  },
+  selectFieldDisabled: {
+    opacity: 0.55,
+  },
+  selectValue: {
+    fontSize: 15,
+    fontFamily: FONTS.bold,
+    color: colors.text,
+  },
+  selectPlaceholder: {
+    fontSize: 15,
+    fontFamily: FONTS.bold,
+    color: colors.textMuted,
   },
   phoneRow: {
     flexDirection: 'row',

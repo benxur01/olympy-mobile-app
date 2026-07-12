@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, Share } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, Share, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../services/ThemeContext';
 import { FONTS } from '../constants/typography';
@@ -13,7 +13,7 @@ import ErrorState from '../components/ErrorState';
 import useFetch from '../services/useFetch';
 import { studentApi } from '../services/api';
 import { useAuth } from '../services/AuthContext';
-import { ShareIcon, CheckIcon, CloseIcon, ChevronRightIcon, LockIcon, SparkleIcon } from '../components/icons/Icons';
+import { ShareIcon, CheckIcon, CloseIcon, LockIcon, SparkleIcon, RepeatIcon } from '../components/icons/Icons';
 
 const makeSECTION_COLORS = (colors, tints) => ([colors.blue, colors.green, colors.purple, colors.orange, colors.blueLight]);
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
@@ -75,6 +75,10 @@ export default function ResultsScreen({ navigation }) {
   const [aiData, setAiData] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [expanded, setExpanded] = useState({});
+  // Mashq (mock) rejimi: tugagan olimpiadani reytingga ta'sir qilmasdan qayta
+  // ishlash. Backend MockOlympiad nusxasini get-or-create qiladi, so'ng mashq
+  // ekraniga o'tamiz. practicingId — bosilgan natija qatorining id'si (spinner).
+  const [practicingId, setPracticingId] = useState(null);
 
   const { data, loading, refreshing, error, reload, refresh } = useFetch(async () => {
     const [results, stats] = await Promise.all([
@@ -138,6 +142,33 @@ export default function ResultsScreen({ navigation }) {
       }
     }
     setExpanded((prev) => ({ ...prev, [q.id]: !prev[q.id] }));
+  };
+
+  const handlePractice = async (r) => {
+    if (practicingId != null) return;
+    // Attempt serializer `olympiad` FK id (int) qaytaradi; ba'zi javoblarda
+    // olympiad obyekt bo'lishi mumkin — ikkalasini ham qo'llaymiz.
+    const olympiadId = typeof r.olympiad === 'number' ? r.olympiad : r.olympiad?.id;
+    if (olympiadId == null) return;
+    setPracticingId(r.id);
+    try {
+      const { data: mock } = await studentApi.createPracticeMock(olympiadId);
+      if (mock?.mock_id != null) {
+        navigation.navigate('MockExam', {
+          mockId: mock.mock_id,
+          title: mock.title || r.olympiad_title || r.olympiad?.title,
+          subject: r.olympiad?.subject,
+          duration: r.time_limit_minutes || 30,
+        });
+      } else {
+        Alert.alert('Xatolik', "Mashq rejimini ochib bo'lmadi.");
+      }
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      Alert.alert('Xatolik', detail || "Mashq rejimini ochib bo'lmadi.");
+    } finally {
+      setPracticingId(null);
+    }
   };
 
   const onShare = async () => {
@@ -313,7 +344,21 @@ export default function ResultsScreen({ navigation }) {
                       {r.score} ball · {r.correct_count}/{r.total_questions} to'g'ri
                     </Text>
                   </View>
-                  <ChevronRightIcon size={14} />
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    style={styles.practiceBtn}
+                    disabled={practicingId != null}
+                    onPress={() => handlePractice(r)}
+                  >
+                    {practicingId === r.id ? (
+                      <ActivityIndicator size="small" color={colors.blue} />
+                    ) : (
+                      <>
+                        <RepeatIcon size={14} color={colors.blue} />
+                        <Text style={styles.practiceBtnText}>Mashq</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
                 </Card>
               ))}
             </View>
@@ -452,6 +497,24 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     fontSize: 11.5,
     fontFamily: FONTS.semibold,
     color: colors.textSecondary,
+  },
+  practiceBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    minWidth: 78,
+    height: 34,
+    paddingHorizontal: 10,
+    borderRadius: 11,
+    backgroundColor: tints.blue10,
+    borderWidth: 1,
+    borderColor: tints.blueBorder30,
+  },
+  practiceBtnText: {
+    fontSize: 12,
+    fontFamily: FONTS.extrabold,
+    color: colors.blue,
   },
   analysisList: {
     gap: 8,

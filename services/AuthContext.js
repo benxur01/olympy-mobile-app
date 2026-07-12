@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { authApi, setTokens, setAuthHandlers } from './api';
+import { authApi, notificationsApi, setTokens, setAuthHandlers } from './api';
 import { resetToLogin } from './navigationRef';
+import { registerForPushNotificationsAsync } from './pushNotifications';
 
 const TOKEN_KEY = 'olympy_token';
 const REFRESH_KEY = 'olympy_refresh';
@@ -33,6 +34,21 @@ export function AuthProvider({ children }) {
     return me;
   }, []);
 
+  // Foydalanuvchi autentifikatsiyadan o'tgach (login/register yoki sessiya
+  // tiklangach) Expo push tokenni olib backendga ro'yxatdan o'tkazamiz.
+  // Bu butunlay best-effort: xato bo'lsa ham auth oqimini bloklamaydi va
+  // foydalanuvchiga xato ko'rsatmaydi (backend token bo'yicha idempotent).
+  const registerPushToken = useCallback(async () => {
+    try {
+      const token = await registerForPushNotificationsAsync();
+      if (token) {
+        await notificationsApi.subscribePush(token);
+      }
+    } catch (e) {
+      console.log('[push] Tokenni ro\'yxatdan o\'tkazib bo\'lmadi:', e?.message || e);
+    }
+  }, []);
+
   // Axios interceptor bilan bog'lash: token jimgina yangilanganda diskка
   // saqlaymiz; refresh butunlay muvaffaqiyatsiz bo'lsa sessiyani tozalab
   // Login'ga qaytaramiz (item 17).
@@ -60,6 +76,7 @@ export function AuthProvider({ children }) {
         if (token) {
           setTokens({ token, refresh });
           await loadMe();
+          registerPushToken();
         }
       } catch (e) {
         setTokens({});
@@ -67,7 +84,7 @@ export function AuthProvider({ children }) {
         setInitializing(false);
       }
     })();
-  }, [loadMe]);
+  }, [loadMe, registerPushToken]);
 
   const login = async (phone, password, totpCode) => {
     const { data } = await authApi.login(phone, password, totpCode);
@@ -77,6 +94,7 @@ export function AuthProvider({ children }) {
     await persistTokens(data.token, data.refresh);
     const me = data.user || (await loadMe());
     setUser(me);
+    registerPushToken();
     return { user: me };
   };
 
@@ -85,6 +103,19 @@ export function AuthProvider({ children }) {
     await persistTokens(data.token, data.refresh);
     const me = data.user || (await loadMe());
     setUser(me);
+    registerPushToken();
+    return { user: me };
+  };
+
+  // Tashkilot/o'quv markaz ro'yxatdan o'tishi — direktor hisobi + markaz.
+  // Backend odatdagi register bilan bir xil {token, refresh, user, center}
+  // qaytaradi, shuning uchun tokenlarni xuddi register kabi saqlaymiz.
+  const registerOrganization = async (payload) => {
+    const { data } = await authApi.registerOrganization(payload);
+    await persistTokens(data.token, data.refresh);
+    const me = data.user || (await loadMe());
+    setUser(me);
+    registerPushToken();
     return { user: me };
   };
 
@@ -106,7 +137,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, initializing, login, register, logout, reloadMe: loadMe, applyAuthTokens }}
+      value={{ user, initializing, login, register, registerOrganization, logout, reloadMe: loadMe, applyAuthTokens }}
     >
       {children}
     </AuthContext.Provider>

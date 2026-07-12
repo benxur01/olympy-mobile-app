@@ -19,17 +19,18 @@ import StatCard from '../components/StatCard';
 import IconBox from '../components/IconBox';
 import Button from '../components/Button';
 import DonutProgress from '../components/DonutProgress';
+import PredictionBlock from '../components/PredictionBlock';
 import ActivityBarChart from '../components/ActivityBarChart';
 import LoadingState from '../components/LoadingState';
 import ErrorState from '../components/ErrorState';
 import useFetch from '../services/useFetch';
-import { parentApi } from '../services/api';
+import { parentApi, downloadChildReportPdf } from '../services/api';
 import {
   FlameIcon,
   ChevronRightIcon,
   BellIcon,
   SparkleIcon,
-  UsersIcon,
+  DownloadIcon,
 } from '../components/icons/Icons';
 
 const WEEK_LABELS = ['Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh', 'Ya'];
@@ -71,117 +72,6 @@ function LinkChildForm({ phone, setPhone, onSubmit, linking, compact }) {
   );
 }
 
-// Sizni "farzand" sifatida kuzatmoqchi bo'lgan ota-ona so'rovlari (backend
-// `list_parent_requests` — websaytda StudentDashboard'da ko'rinadi). Tasdiqlash
-// yoki rad etish tugmalari bilan.
-function ParentRequestsSection({ requests, respondingId, onRespond }) {
-  const { colors, tints } = useTheme();
-  const styles = makeStyles(colors, tints);
-  return (
-    <View style={styles.requestsSection}>
-      <View style={styles.requestsHeaderRow}>
-        <UsersIcon size={16} color={colors.gold} />
-        <Text style={styles.requestsTitle}>Ota-ona kuzatuv so'rovlari</Text>
-      </View>
-      <Text style={styles.requestsDesc}>
-        Quyidagi shaxslar sizni "farzand" sifatida kuzatmoqchi. Tasdiqlasangiz,
-        ular natijalaringiz va faolligingizni ko'ra oladi.
-      </Text>
-      {requests.map((req) => {
-        const busy = respondingId === req.link_id;
-        return (
-          <Card key={req.link_id} radius={14} style={styles.requestRow} background={colors.surfaceDeep}>
-            <View style={styles.requestTop}>
-              <Avatar
-                letter={initialOf(req.parent_name)}
-                uri={req.avatar_url || undefined}
-                size={40}
-                fontSize={16}
-                background={tints.gold14}
-                color={colors.gold}
-              />
-              <View style={styles.requestInfo}>
-                <Text style={styles.requestName} numberOfLines={1}>
-                  {req.parent_name || 'Foydalanuvchi'}
-                </Text>
-                {req.parent_username ? (
-                  <Text style={styles.requestUser} numberOfLines={1}>@{req.parent_username}</Text>
-                ) : null}
-              </View>
-            </View>
-            <View style={styles.requestBtns}>
-              <Button
-                title="Tasdiqlash"
-                variant="success"
-                height={40}
-                radius={11}
-                fontSize={13}
-                style={styles.requestBtn}
-                disabled={busy}
-                onPress={() => onRespond(req.link_id, true)}
-              />
-              <Button
-                title="Rad etish"
-                variant="muted"
-                height={40}
-                radius={11}
-                fontSize={13}
-                style={styles.requestBtn}
-                disabled={busy}
-                onPress={() => onRespond(req.link_id, false)}
-              />
-            </View>
-          </Card>
-        );
-      })}
-    </View>
-  );
-}
-
-// Bitta farzandning AI muvaffaqiyat bashorati (3 ta yo'nalish foizi + AI tavsiya).
-function PredictionBlock({ state }) {
-  const { colors, tints } = useTheme();
-  const styles = makeStyles(colors, tints);
-  if (!state || state.loading) {
-    return (
-      <View style={styles.predLoadingRow}>
-        <ActivityIndicator size="small" color={colors.blue} />
-        <Text style={styles.predLoadingText}>Bashorat hisoblanmoqda…</Text>
-      </View>
-    );
-  }
-  if (state.error) {
-    return <Text style={styles.predLoadingText}>Bashoratni yuklab bo'lmadi</Text>;
-  }
-  const p = state.data?.predictions || {};
-  const items = [
-    { key: 'presidential_school', label: 'Prezident\nmaktabi', value: p.presidential_school ?? 0, color: colors.blue },
-    { key: 'al_xorazmiy', label: 'Al-Xorazmiy', value: p.al_xorazmiy ?? 0, color: colors.purple },
-    { key: 'dtm', label: 'DTM testlari', value: p.dtm ?? 0, color: colors.green },
-  ];
-  const tip = state.data?.ai_analysis;
-  return (
-    <View>
-      <View style={styles.predRow}>
-        {items.map((it) => (
-          <View key={it.key} style={styles.predItem}>
-            <DonutProgress size={58} strokeWidth={6} progress={it.value} color={it.color}>
-              <Text style={[styles.predPct, { color: it.color }]}>{it.value}%</Text>
-            </DonutProgress>
-            <Text style={styles.predLabel}>{it.label}</Text>
-          </View>
-        ))}
-      </View>
-      {tip ? (
-        <View style={styles.aiTip}>
-          <SparkleIcon size={12} color={colors.blueLight} />
-          <Text style={styles.aiTipText}>{tip}</Text>
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
 // Bitta farzand kartasi: profil, statistika, AI bashorat, so'nggi natijalar,
 // haftalik hisobot toggli va bog'lanishni bekor qilish tugmasi.
 function ChildCard({ child, predState, digestOn, onToggleDigest, onUnlink, unlinking }) {
@@ -197,6 +87,35 @@ function ChildCard({ child, predState, digestOn, onToggleDigest, onUnlink, unlin
   const bestScore = attempts.reduce((m, a) => ((a.score || 0) > m ? a.score : m), 0);
   const childSub = child.username ? `@${child.username}` : "Olympy o'quvchisi";
   const weeklyActivity = buildWeeklyActivity(child, colors);
+
+  const [downloadingReport, setDownloadingReport] = useState(false);
+  const [sendingTestDigest, setSendingTestDigest] = useState(false);
+
+  const downloadReport = async () => {
+    if (downloadingReport) return;
+    setDownloadingReport(true);
+    try {
+      await downloadChildReportPdf(child.student_id, child.full_name);
+    } catch (e) {
+      Alert.alert('Xatolik', "Hisobotni yuklab bo'lmadi. Qayta urinib ko'ring.");
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
+
+  const sendTestDigest = async () => {
+    if (sendingTestDigest) return;
+    setSendingTestDigest(true);
+    try {
+      await parentApi.sendTestWeeklyDigest(child.student_id);
+      Alert.alert('Yuborildi', "Sinov hisobot xabari Telegram orqali yuborildi.");
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      Alert.alert('Xatolik', detail || "Xabarni yuborib bo'lmadi.");
+    } finally {
+      setSendingTestDigest(false);
+    }
+  };
 
   return (
     <Card radius={20} style={styles.childCard}>
@@ -299,6 +218,39 @@ function ChildCard({ child, predState, digestOn, onToggleDigest, onUnlink, unlin
           <View style={[styles.toggleKnob, digestOn ? null : styles.toggleKnobOff]} />
         </TouchableOpacity>
       </View>
+
+      <View style={styles.reportActions}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          style={styles.reportActionBtn}
+          disabled={downloadingReport}
+          onPress={downloadReport}
+        >
+          {downloadingReport ? (
+            <ActivityIndicator size="small" color={colors.blueLight} />
+          ) : (
+            <DownloadIcon size={14} color={colors.blueLight} />
+          )}
+          <Text style={styles.reportActionText}>
+            {downloadingReport ? 'Yuklanmoqda…' : 'PDF hisobot'}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          style={styles.reportActionBtn}
+          disabled={sendingTestDigest}
+          onPress={sendTestDigest}
+        >
+          {sendingTestDigest ? (
+            <ActivityIndicator size="small" color={colors.blueLight} />
+          ) : (
+            <BellIcon size={14} color={colors.blueLight} />
+          )}
+          <Text style={styles.reportActionText}>
+            {sendingTestDigest ? 'Yuborilmoqda…' : 'Sinov xabari'}
+          </Text>
+        </TouchableOpacity>
+      </View>
     </Card>
   );
 }
@@ -334,22 +286,14 @@ export default function ParentScreen() {
     () => parentApi.children().then((r) => asArray(r.data)),
     []
   );
-  // Ota-ona kuzatuv so'rovlari alohida yuklanadi — asosiy ekranni bloklamaydi.
-  const requestsFetch = useFetch(
-    () => parentApi.parentRequests().then((r) => asArray(r.data)),
-    []
-  );
-
   const [phone, setPhone] = useState('');
   const [linking, setLinking] = useState(false);
   const [digestOverride, setDigestOverride] = useState({}); // { [studentId]: bool }
   const [predMap, setPredMap] = useState({}); // { [studentId]: { loading|data|error } }
-  const [respondingId, setRespondingId] = useState(null);
   const [unlinkingId, setUnlinkingId] = useState(null);
   const requestedPreds = useRef(new Set());
 
   const children = data || [];
-  const requests = requestsFetch.data || [];
 
   // Har bir farzand uchun bashoratni bir marta (fon rejimida) yuklaymiz.
   useEffect(() => {
@@ -404,19 +348,6 @@ export default function ParentScreen() {
     } catch (e) {
       setDigestOverride((m) => ({ ...m, [id]: current })); // xatoda qaytaramiz
       Alert.alert('Xatolik', "Sozlamani o'zgartirib bo'lmadi.");
-    }
-  };
-
-  const respondRequest = async (linkId, accept) => {
-    if (respondingId) return;
-    setRespondingId(linkId);
-    try {
-      await parentApi.respondParentRequest(linkId, accept);
-      requestsFetch.reload();
-    } catch (e) {
-      Alert.alert('Xatolik', "So'rovni qayta ishlab bo'lmadi. Keyinroq urinib ko'ring.");
-    } finally {
-      setRespondingId(null);
     }
   };
 
@@ -479,13 +410,6 @@ export default function ParentScreen() {
           ) : null}
         </View>
 
-        {requests.length > 0 ? (
-          <ParentRequestsSection
-            requests={requests}
-            respondingId={respondingId}
-            onRespond={respondRequest}
-          />
-        ) : null}
 
         {!hasChildren ? (
           <Card radius={20} style={styles.emptyLinkCard}>
@@ -551,62 +475,6 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     borderRadius: 10,
   },
 
-  // ── Ota-ona kuzatuv so'rovlari ──────────────────────────────────
-  requestsSection: {
-    marginTop: 16,
-    borderWidth: 1,
-    borderColor: tints.goldBorder30,
-    borderRadius: 18,
-    backgroundColor: tints.gold06,
-    padding: 15,
-    gap: 10,
-  },
-  requestsHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  requestsTitle: {
-    fontSize: 14.5,
-    fontFamily: FONTS.extrabold,
-    color: colors.text,
-  },
-  requestsDesc: {
-    fontSize: 11.5,
-    fontFamily: FONTS.semibold,
-    color: colors.textSecondary,
-    lineHeight: 17,
-  },
-  requestRow: {
-    padding: 12,
-    gap: 11,
-  },
-  requestTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 11,
-  },
-  requestInfo: {
-    flex: 1,
-  },
-  requestName: {
-    fontSize: 13.5,
-    fontFamily: FONTS.extrabold,
-    color: colors.text,
-  },
-  requestUser: {
-    fontSize: 11.5,
-    fontFamily: FONTS.semibold,
-    color: colors.textSecondary,
-    marginTop: 1,
-  },
-  requestBtns: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  requestBtn: {
-    flex: 1,
-  },
 
   // ── Farzand kartasi ─────────────────────────────────────────────
   childCard: {
@@ -824,6 +692,28 @@ const makeStyles = (colors, tints) => StyleSheet.create({
   toggleKnobOff: {
     right: undefined,
     left: 2,
+  },
+  reportActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 9,
+  },
+  reportActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 38,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceDeep,
+  },
+  reportActionText: {
+    fontSize: 11,
+    fontFamily: FONTS.bold,
+    color: colors.blueSoftText,
   },
 
   // ── Bo'sh holat / farzand ulash ─────────────────────────────────

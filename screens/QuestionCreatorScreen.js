@@ -1,20 +1,24 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert, Modal, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import { useTheme } from '../services/ThemeContext';
 import { FONTS } from '../constants/typography';
 import Card from '../components/Card';
 import Chip from '../components/Chip';
+import Badge from '../components/Badge';
 import Button from '../components/Button';
 import IconBox from '../components/IconBox';
 import EmptyState from '../components/EmptyState';
 import { teacherApi } from '../services/api';
 import { useAuth } from '../services/AuthContext';
 import { centerIdForUser } from '../services/roles';
-import { SparkleIcon, CheckIcon, CloseIcon, InboxIcon, FileIcon, WarningIcon } from '../components/icons/Icons';
+import { SparkleIcon, CheckIcon, CloseIcon, InboxIcon, FileIcon, WarningIcon, EditIcon } from '../components/icons/Icons';
 
 const MODES = ['AI generatsiya', "Qo'lda"];
+const BANK_MODE = 'Bank';
+// Qiyinlik kaliti → o'qiladigan yorliq (bank ro'yxatidagi badge uchun).
+const DIFFICULTY_LABELS = { easy: 'Oson', medium: "O'rta", hard: 'Qiyin' };
 const IMPORT_MODES = ['PDF import', 'Word', 'Excel'];
 const DIFFICULTIES = [
   { label: 'Oson', value: 'easy' },
@@ -56,6 +60,23 @@ export default function QuestionCreatorScreen({ navigation }) {
   const [mText, setMText] = useState('');
   const [mOptions, setMOptions] = useState(['', '', '', '']);
   const [mCorrect, setMCorrect] = useState(0);
+
+  // ── Savollar banki (ro'yxat + tahrirlash/o'chirish) ────────────────
+  const [bankQuestions, setBankQuestions] = useState([]);
+  const [bankLoading, setBankLoading] = useState(false);
+  const [bankError, setBankError] = useState(false);
+  const [bankDeleting, setBankDeleting] = useState(null);
+  // Tahrirlash formasi holati (qo'lda yaratish formasi bilan bir xil UX, lekin
+  // alohida — POST o'rniga PATCH qiladi va tanlangan savolni to'ldiradi).
+  const [editOpen, setEditOpen] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [editType, setEditType] = useState('mcq');
+  const [editText, setEditText] = useState('');
+  const [editSubjectIdx, setEditSubjectIdx] = useState(0);
+  const [editDifficulty, setEditDifficulty] = useState('medium');
+  const [editOptions, setEditOptions] = useState(['', '', '', '']);
+  const [editCorrect, setEditCorrect] = useState(0);
+  const [editSaving, setEditSaving] = useState(false);
 
   const subject = SUBJECTS[subjectIdx];
 
@@ -394,6 +415,98 @@ export default function QuestionCreatorScreen({ navigation }) {
     }
   };
 
+  // ── Savollar bankini yuklash ────────────────────────────────────────
+  const loadBank = useCallback(async () => {
+    if (!centerId) return;
+    setBankLoading(true);
+    setBankError(false);
+    try {
+      const { data } = await teacherApi.questions({ center: centerId, page_size: 500 });
+      const list = Array.isArray(data) ? data : data?.results || [];
+      setBankQuestions(list);
+    } catch (e) {
+      setBankError(true);
+    } finally {
+      setBankLoading(false);
+    }
+  }, [centerId]);
+
+  // Bank rejimiga o'tilganda ro'yxatni yuklaymiz.
+  useEffect(() => {
+    if (mode === BANK_MODE) loadBank();
+  }, [mode, loadBank]);
+
+  const openEdit = (q) => {
+    setEditId(q.id);
+    setEditType(q.question_type || 'mcq');
+    setEditText(q.text || '');
+    const idx = SUBJECTS.indexOf(q.subject);
+    setEditSubjectIdx(idx >= 0 ? idx : 0);
+    setEditDifficulty(q.difficulty || 'medium');
+    const opts = Array.isArray(q.options) ? q.options.map((o) => String(o)) : [];
+    while (opts.length < 4) opts.push('');
+    setEditOptions(opts.slice(0, 4));
+    setEditCorrect(typeof q.correct_answer === 'number' ? q.correct_answer : 0);
+    setEditOpen(true);
+  };
+
+  const saveEdit = async () => {
+    if (editSaving || editId == null) return;
+    if (!editText.trim()) {
+      Alert.alert('Savol matni kerak', 'Iltimos, savol matnini kiriting.');
+      return;
+    }
+    const opts = editOptions.map((o) => o.trim());
+    if (opts.filter(Boolean).length < 2) {
+      Alert.alert('Variantlar kerak', 'Kamida 2 ta variant kiriting.');
+      return;
+    }
+    setEditSaving(true);
+    const payload = {
+      subject: SUBJECTS[editSubjectIdx],
+      text: editText.trim(),
+      options: opts,
+      correct_answer: editCorrect,
+      difficulty: editDifficulty,
+      question_type: editType || 'mcq',
+    };
+    try {
+      const { data } = await teacherApi.updateQuestion(editId, payload);
+      setBankQuestions((prev) =>
+        prev.map((x) => (x.id === editId ? { ...x, ...payload, ...(data || {}) } : x))
+      );
+      setEditOpen(false);
+      Alert.alert('Saqlandi', 'Savol yangilandi.');
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      Alert.alert('Xatolik', detail || "Saqlab bo'lmadi. Qayta urinib ko'ring.");
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const deleteBankQuestion = (q) => {
+    if (q.id == null) return;
+    Alert.alert("Savolni o'chirish", "Bu savolni bankdan o'chirasizmi? Bu amalni ortga qaytarib bo'lmaydi.", [
+      { text: 'Bekor', style: 'cancel' },
+      {
+        text: "O'chirish",
+        style: 'destructive',
+        onPress: async () => {
+          setBankDeleting(q.id);
+          try {
+            await teacherApi.deleteQuestion(q.id);
+            setBankQuestions((prev) => prev.filter((x) => x.id !== q.id));
+          } catch (e) {
+            Alert.alert('Xatolik', e?.response?.data?.detail || "O'chirib bo'lmadi.");
+          } finally {
+            setBankDeleting(null);
+          }
+        },
+      },
+    ]);
+  };
+
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -418,6 +531,12 @@ export default function QuestionCreatorScreen({ navigation }) {
           {IMPORT_MODES.map((m) => (
             <Chip key={m} label={m} active={mode === m} radius={11} onPress={() => switchMode(m)} />
           ))}
+          <Chip
+            label="Savollar banki"
+            active={mode === BANK_MODE}
+            radius={11}
+            onPress={() => switchMode(BANK_MODE)}
+          />
         </ScrollView>
 
         {noCenter ? (
@@ -623,6 +742,74 @@ export default function QuestionCreatorScreen({ navigation }) {
               ? renderReview(generated, rejected, toggleReject, saving, saveGenerated)
               : null}
           </>
+        ) : mode === BANK_MODE ? (
+          // Savollar banki — mavjud savollar ro'yxati (tahrirlash / o'chirish)
+          bankLoading ? (
+            <ActivityIndicator color={colors.blue} style={{ marginTop: 40 }} />
+          ) : bankError ? (
+            <View style={styles.noCenter}>
+              <EmptyState
+                compact
+                icon={<WarningIcon size={22} color={colors.orange} />}
+                title="Yuklab bo'lmadi"
+                message="Savollar bankini yuklab bo'lmadi."
+                actionLabel="Qayta urinish"
+                onAction={loadBank}
+              />
+            </View>
+          ) : bankQuestions.length === 0 ? (
+            <View style={styles.noCenter}>
+              <EmptyState
+                compact
+                icon={<InboxIcon size={22} color={colors.blueLight} />}
+                title="Savollar banki bo'sh"
+                message="Hali savol qo'shilmagan. Yuqoridagi rejimlar orqali savol yarating."
+              />
+            </View>
+          ) : (
+            <>
+              <View style={styles.resultHeader}>
+                <Text style={styles.resultTitle}>{bankQuestions.length} ta savol</Text>
+                <TouchableOpacity activeOpacity={0.7} onPress={loadBank}>
+                  <Text style={styles.resultSub}>yangilash ↻</Text>
+                </TouchableOpacity>
+              </View>
+              {bankQuestions.map((q, qi) => (
+                <TouchableOpacity key={q.id ?? qi} activeOpacity={0.85} onPress={() => openEdit(q)}>
+                  <Card style={styles.bankCard}>
+                    <View style={styles.bankRow}>
+                      <View style={styles.bankTextCol}>
+                        <View style={styles.bankMeta}>
+                          {q.subject ? (
+                            <Badge label={q.subject} color={colors.blueLight} background={tints.blue14} size={10} />
+                          ) : null}
+                          <Badge
+                            label={DIFFICULTY_LABELS[q.difficulty] || q.difficulty || "O'rta"}
+                            color={colors.purpleLight}
+                            background={tints.purple16}
+                            size={10}
+                          />
+                        </View>
+                        <Text style={styles.bankText} numberOfLines={2}>{q.text || '—'}</Text>
+                      </View>
+                      <TouchableOpacity
+                        activeOpacity={0.8}
+                        style={styles.bankDeleteBtn}
+                        disabled={bankDeleting === q.id}
+                        onPress={() => deleteBankQuestion(q)}
+                      >
+                        {bankDeleting === q.id ? (
+                          <ActivityIndicator size="small" color={colors.red} />
+                        ) : (
+                          <CloseIcon size={13} color={colors.red} strokeWidth={2.6} />
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </Card>
+                </TouchableOpacity>
+              ))}
+            </>
+          )
         ) : (
           // Qo'lda kiritish
           <Card radius={18} style={styles.formCard}>
@@ -717,6 +904,105 @@ export default function QuestionCreatorScreen({ navigation }) {
           </Card>
         )}
       </ScrollView>
+
+      {/* Savolni tahrirlash modali — banka ro'yxatidagi savolga bosilganda ochiladi. */}
+      <Modal visible={editOpen} transparent animationType="slide" onRequestClose={() => setEditOpen(false)}>
+        <TouchableOpacity activeOpacity={1} style={styles.overlay} onPress={() => setEditOpen(false)} />
+        <View style={styles.sheet}>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <View style={styles.handle} />
+            <Text style={styles.sheetTitle}>Savolni tahrirlash</Text>
+
+            <Text style={[styles.fieldLabel, { marginTop: 14 }]}>FAN</Text>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={styles.select}
+              onPress={() => setEditSubjectIdx((i) => (i + 1) % SUBJECTS.length)}
+            >
+              <Text style={styles.selectText}>{SUBJECTS[editSubjectIdx]}</Text>
+              <Text style={styles.selectHint}>o'zgartirish ›</Text>
+            </TouchableOpacity>
+
+            <Text style={[styles.fieldLabel, { marginTop: 12 }]}>SAVOL MATNI</Text>
+            <TextInput
+              style={[styles.input, styles.inputMulti]}
+              value={editText}
+              onChangeText={setEditText}
+              placeholder="Savol matnini kiriting…"
+              placeholderTextColor={colors.textMuted}
+              multiline
+              textAlignVertical="top"
+            />
+
+            <Text style={[styles.fieldLabel, { marginTop: 12 }]}>VARIANTLAR (to'g'risini belgilang)</Text>
+            {editOptions.map((opt, oi) => (
+              <View key={oi} style={styles.optionInputRow}>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => setEditCorrect(oi)}
+                  style={[styles.correctToggle, editCorrect === oi ? styles.correctToggleOn : null]}
+                >
+                  {editCorrect === oi ? <CheckIcon size={12} color={colors.white} /> : (
+                    <Text style={styles.correctToggleText}>{LETTERS[oi]}</Text>
+                  )}
+                </TouchableOpacity>
+                <TextInput
+                  style={styles.optionInput}
+                  value={opt}
+                  onChangeText={(t) => setEditOptions((prev) => prev.map((x, i) => (i === oi ? t : x)))}
+                  placeholder={`${LETTERS[oi]} varianti`}
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+            ))}
+
+            <Text style={[styles.fieldLabel, { marginTop: 12 }]}>QIYINLIK</Text>
+            <View style={styles.difficultyRow}>
+              {DIFFICULTIES.map((d) => {
+                const active = editDifficulty === d.value;
+                return (
+                  <TouchableOpacity
+                    key={d.value}
+                    activeOpacity={0.8}
+                    onPress={() => setEditDifficulty(d.value)}
+                    style={[
+                      styles.difficultyOption,
+                      {
+                        borderColor: active ? colors.blue : colors.borderStrong,
+                        backgroundColor: active ? tints.blue14 : colors.surfaceDeep,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontFamily: active ? FONTS.extrabold : FONTS.bold,
+                        color: active ? colors.blueLight : colors.textSecondary,
+                      }}
+                    >
+                      {d.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Button
+              title={editSaving ? 'Saqlanmoqda…' : 'Saqlash'}
+              variant="success"
+              height={48}
+              radius={12}
+              fontSize={14.5}
+              style={styles.generateBtn}
+              disabled={editSaving}
+              onPress={saveEdit}
+            />
+            <TouchableOpacity activeOpacity={0.7} onPress={() => setEditOpen(false)} style={styles.editCancel}>
+              <Text style={styles.editCancelText}>Bekor qilish</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1044,5 +1330,50 @@ const makeStyles = (colors, tints) => StyleSheet.create({
   },
   saveBtn: {
     marginTop: 14,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.overlay,
+    zIndex: 8,
+  },
+  sheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    maxHeight: '85%',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: colors.borderStrong,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 14,
+    paddingHorizontal: 22,
+    paddingBottom: 30,
+    zIndex: 9,
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.borderDashed,
+    alignSelf: 'center',
+  },
+  sheetTitle: {
+    fontSize: 16,
+    fontFamily: FONTS.extrabold,
+    color: colors.text,
+    marginTop: 16,
+  },
+  editCancel: {
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  editCancelText: {
+    textAlign: 'center',
+    fontSize: 12,
+    fontFamily: FONTS.bold,
+    color: colors.textMuted,
   },
 });

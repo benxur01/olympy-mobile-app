@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { API_BASE_URL, API_TIMEOUT } from './config';
 
 const client = axios.create({
@@ -71,10 +73,16 @@ export const authApi = {
   login: (phone, password, totpCode) =>
     client.post('/api/auth/login/', { phone, password, ...(totpCode ? { totp_code: totpCode } : {}) }),
   register: (payload) => client.post('/api/auth/register/', payload),
+  registerOrganization: (payload) => client.post('/api/auth/register-organization/', payload),
   logout: () => client.post('/api/auth/logout/'),
   startTelegramVerification: (phone) =>
     client.post('/api/auth/phone/start-telegram-verification/', { phone }),
   verifyOtp: (phone, code) => client.post('/api/auth/phone/verify-otp/', { phone, code }),
+  // Ro'yxatdan o'tgandan keyin (Sozlamalar'dan) Telegram akkauntini ulash —
+  // bildirishnomalar (arizalar, olimpiada e'lonlari) Telegram orqali kelishi
+  // uchun. Javob: { telegram_deep_link, bot_username }. Bot orqali ulangach
+  // `user.telegram_linked` true bo'ladi (polling bilan aniqlanadi).
+  startTelegramLink: () => client.post('/api/auth/telegram/link/start/'),
   // Parolni tiklash — websaytdagi bilan bir xil telefon + Telegram OTP oqimi.
   // start: {phone} → {telegram_deep_link, bot_username, ...}; foydalanuvchi deep
   // link orqali botni ochadi, bot 6 xonali kod yuboradi. confirm: {phone, otp,
@@ -120,18 +128,47 @@ export const studentApi = {
   myResults: (params) => client.get('/api/results/me/', { params }),
   myStreak: () => client.get('/api/me/streak/'),
   dailyGoal: () => client.get('/api/me/daily-goal/'),
+  setDailyGoal: (n) => client.post('/api/me/daily-goal/', { target_questions: n }),
+  streakWarning: () => client.get('/api/me/streak-warning/'),
+  peerComparison: () => client.get('/api/me/peer-comparison/'),
+  suggestedOlympiad: () => client.get('/api/me/suggested-olympiad/'),
+  // "O'tgan oy shu paytda" taqqoslash → { current_month: {avg_score,
+  //   attempts}, last_month: {avg_score, attempts}, growth_percent, message }
+  progressComparison: () => client.get('/api/me/progress-comparison/'),
   dailyQuestions: () => client.get('/api/daily-questions/'),
   answerDailyQuestion: (dailyId, payload) =>
     client.post(`/api/daily-questions/${dailyId}/answer/`, payload),
   weeklyContest: () => client.get('/api/weekly-contest/'),
   rivalActivity: () => client.get('/api/me/rival-activity/'),
+  // Haftalik eng faol o'quvchilar (streak bo'yicha) → [{ user_id, rank, name,
+  //   badges, streak_count }]
+  activityLeaderboard: () => client.get('/api/me/activity-leaderboard/'),
   achievements: () => client.get('/api/me/achievements/'),
   olympiads: (params) => client.get('/api/olympiads/', { params }),
   olympiadDetail: (id) => client.get(`/api/olympiads/${id}/`),
-  olympiadQuestions: (id) => client.get(`/api/olympiads/${id}/questions/`),
+  // Savollar. Indeks berilmasa — eski to'liq ro'yxat shakli. Indeks berilsa
+  // (cheating-himoya) faqat shu indeksdagi bitta savol qaytadi: ?q=<index> →
+  // { questions:[oneQuestion], question_index, total_questions, session }.
+  olympiadQuestions: (id, questionIndex) =>
+    client.get(`/api/olympiads/${id}/questions/`, {
+      params: questionIndex != null ? { q: questionIndex } : {},
+    }),
   submitAttempt: (payload) => client.post('/api/attempts/', payload),
   attemptDetail: (attemptId) => client.get(`/api/attempts/${attemptId}/`),
   attemptAiAnalysis: (attemptId) => client.get(`/api/attempts/${attemptId}/ai-analysis/`),
+  // Shaxsiy AI muvaffaqiyat bashorati (Prezident maktabi / Al-Xorazmiy / DTM
+  // foizlari + AI tavsiya) — parentApi.childPredictions bilan bir xil javob
+  // shakli, faqat joriy o'quvchi uchun.
+  predictions: () => client.get('/api/me/predictions/'),
+  // ── O'sishim (Student Progress Dashboard) — HAR o'quvchiga ochiq (premium EMAS) ──
+  // getProgress ?period=30|90|180 → { stats: { total_olympiads, avg_score,
+  //   best_score, streak }, trend: { direction: "o'sish"|"pasayish"|"barqaror",
+  //   last }, timeline: [{ date, olympiad_name, score, rank }],
+  //   subjects: [{ subject, pct }] }. Davr toggle bilan qayta chaqiriladi.
+  getProgress: (period = 30) => client.get('/api/me/progress/', { params: { period } }),
+  // getAiAdvice → { advices: [{ tone: 'warning'|'success', title, text }] }.
+  // Shablonli (LLMsiz) shaxsiy tavsiyalar — premium EMAS.
+  getAiAdvice: () => client.get('/api/me/ai-advice/'),
   // Sertifikat PNG'sini (faqat 1-o'rin egasiga) autentifikatsiya bilan yuklab
   // olib, ilova ichida ko'rsatish uchun blob sifatida qaytaramiz
   // (FileReader.readAsDataURL bilan data-URI ga aylantiriladi).
@@ -147,6 +184,39 @@ export const studentApi = {
   mistakes: () => client.get('/api/attempts/mistakes/'),
   explainAllMistakes: () => client.post('/api/attempts/mistakes/explain/'),
   leaderboard: (params) => client.get('/api/leaderboard/', { params }),
+  // Sinfdoshlar reytingi (onboarding_grade bo'yicha; sinf yo'q bo'lsa umumiy) →
+  // [{ user_id, rank, full_name, avg_score, streak, is_me }].
+  classmatesLeaderboard: () => client.get('/api/me/classmates-leaderboard/'),
+  // Barcha tasdiqlangan markazlar ro'yxati (PUBLIC) — o'quvchi qo'shimcha markaz
+  // izlab, ariza yuborishi uchun. Har bir element: { id, name, organization_type,
+  //   region, district, city, status, students, olympiads, image_url }.
+  centersList: () => client.get('/api/centers/'),
+  // Markazga qo'shilish (a'zolik) arizasi. Websaytdagi joinCenter bilan bir xil —
+  // umumiy "qo'shilish" uchun { subject: '' } yuboriladi (backend get_or_create
+  // bilan idempotent; allaqachon a'zo bo'lsa 400 qaytadi).
+  joinCenter: (centerId, payload) =>
+    client.post(`/api/centers/${centerId}/join/`, payload || { subject: '' }),
+  // Olimpiada kalendari — kelgusi ~90 kun ichidagi tadbirlar. `params` orqali
+  // { subject, days } uzatiladi. Javob: { upcoming: [{ id, name, subject,
+  //   starts_at, days_until, registered }] }.
+  olympiadCalendar: (params) => client.get('/api/olympiad-calendar/', { params }),
+  // Oxirgi N oy o'rtacha ball dinamikasi (O'sishim/Analytics ustunli grafigi) →
+  // { months: [{ label yoki month, average_score }] }.
+  monthlyStats: (months) =>
+    client.get('/api/results/me/monthly/', { params: { months } }),
+  // ── Mashq (mock) rejimi: tugagan olimpiadani reytingga ta'sir qilmasdan qayta
+  // ishlash ────────────────────────────────────────────────────────────────
+  // createPracticeMock: POST → { mock_id, attempt_id, status, title }.
+  // startMockOlympiad: barcha savollarni birato'la yuklaydi (real imtihondagi
+  //   bitta-bitta yuklash EMAS) → { questions, title, time_limit_minutes,
+  //   started_at, server_now }. submitMockOlympiad: { answers: { [qid]: payload } }
+  //   → { score, correct_count, total_questions }. Proktoring/anti-cheat YO'Q.
+  createPracticeMock: (olympiadId) =>
+    client.post(`/api/centers/practice-mock/${olympiadId}/`),
+  startMockOlympiad: (mockId, payload) =>
+    client.post(`/api/mock-olympiads/${mockId}/start/`, payload || {}),
+  submitMockOlympiad: (mockId, payload) =>
+    client.post(`/api/mock-olympiads/${mockId}/submit/`, payload || {}),
   shopProducts: () => client.get('/api/shop/products/'),
   rewards: () => client.get('/api/me/rewards/'),
   redeemReward: (payload) => client.post('/api/me/rewards/redeem/', payload),
@@ -245,6 +315,12 @@ export const analyticsApi = {
   // { olympiad_name, days_left, focus_subjects, daily_plan: [{ day, tasks: [...] }] }
   getOlympiadPrepPlan: (olympiadId) =>
     client.post('/api/me/olympiad-prep-plan/', { olympiad_id: olympiadId }),
+  // GET — premium (403 { detail, upgrade_required }). Olimpiada kesimida ball
+  // tarixi: [{ olympiad_name, pct, score, max_score, rank, date }].
+  getHistoryChart: () => client.get('/api/me/history-chart/'),
+  // GET — premium (403). Fan bo'yicha zaiflik xaritasi:
+  // [{ subject, correct, total, pct }].
+  getSubjectWeakness: () => client.get('/api/me/subject-weakness/'),
 };
 
 // Duel (1v1 musobaqa) — premium o'quvchilar uchun. Backend oqimi real-time
@@ -279,6 +355,13 @@ export const billingApi = {
   subscriptionStatus: () => client.get('/api/billing/subscription/status/'),
   currentSubscription: () => client.get('/api/billing/subscription/current/'),
   history: () => client.get('/api/billing/history/'),
+  receipt: (txId) => client.get(`/api/billing/receipt/${encodeURIComponent(txId)}/`),
+  // Tarif limitlari (reja meta-ma'lumoti; premium EMAS) → { students, teachers,
+  //   olympiads, ai_generations } — har biri { used, limit, unlimited,
+  //   near_limit }. `unlimited` yoki `limit` bo'sh bo'lsa cheksiz; `near_limit`
+  //   (~80%+) sariq ogohlantirish; used>=limit qizil.
+  limits: (centerId) =>
+    client.get('/api/billing/limits/', { params: centerId ? { center_id: centerId } : {} }),
 };
 
 export const teacherApi = {
@@ -287,9 +370,32 @@ export const teacherApi = {
   createOlympiad: (payload) => client.post('/api/olympiads/', payload),
   publishOlympiad: (id) => client.post(`/api/olympiads/${id}/publish/`),
   finishOlympiad: (id) => client.post(`/api/olympiads/${id}/finish/`),
+  // Faol olimpiadani "to'xtatib turish" (pauza) — o'chirmasdan/yakunlamasdan
+  // vaqtincha nofaol qiladi (status → inactive). Websaytdagi deactivateOlympiad.
+  deactivateOlympiad: (id) => client.post(`/api/olympiads/${id}/deactivate/`),
   olympiadStats: (id) => client.get(`/api/olympiads/${id}/stats/`),
+  // IT (kod) savollari javoblari — bitta olimpiadaning barcha kod topshiriqlari.
+  // Faqat ko'rish uchun (ball qo'lda qo'yilmaydi — AI test yakunlangach hisoblaydi).
+  // Element: { id, student_name, question_text, code_language, ai_code_score,
+  // submitted_code, ai_code_review }.
+  codeSubmissions: (olympiadId) => client.get(`/api/olympiads/${olympiadId}/code-submissions/`),
+  updateOlympiad: (id, payload) => client.patch(`/api/olympiads/${id}/`, payload),
+  deleteOlympiad: (id) => client.delete(`/api/olympiads/${id}/`),
+  // To'liq (sahifalangan) tadbir reytingi. Javob shakli LeaderboardScreen bilan
+  // bir xil: { entries:[...], pagination:{ total } } (yoki oddiy massiv).
+  leaderboardForOlympiad: (id, page = 1, pageSize = 200) =>
+    client.get('/api/leaderboard/', { params: { olympiad: id, page, page_size: pageSize } }),
+  // Bitta o'quvchining tadbirdagi har bir savol bo'yicha javobi. Javob:
+  // { student_name, correct_count, wrong_count, score, questions:[...] }.
+  eventUserAnswers: (olympiadId, userId) =>
+    client.get(`/api/manager/event-results/${olympiadId}/user/${userId}/`),
   questions: (params) => client.get('/api/questions/', { params }),
   createQuestion: (payload) => client.post('/api/questions/', payload),
+  // Savolni tahrirlash / o'chirish (websaytdagi bilan bir xil endpointlar).
+  // updateQuestion payload createQuestion bilan bir xil shaklда — qism-to'plami
+  // (text, options, correct_answer, subject, difficulty, question_type).
+  updateQuestion: (id, payload) => client.patch(`/api/questions/${id}/`, payload),
+  deleteQuestion: (id) => client.delete(`/api/questions/${id}/`),
   generateAiQuestions: (payload) => client.post('/api/questions/generate-ai/', payload),
   // Excel/CSV to'g'ridan-to'g'ri import (sinxron, polling YO'Q). `params` orqali
   // ?center=&subject= query uzatiladi. Javob: { created, errors, error_count }.
@@ -357,9 +463,17 @@ export const managerApi = {
       params: { ...(centerId ? { center: centerId } : {}), ...(params || {}) },
     }),
   liveProctoring: (olympiadId) => client.get(`/api/manager/olympiads/${olympiadId}/live/`),
-  pendingMemberships: (centerId) => client.get(`/api/centers/${centerId}/memberships/pending/`),
+  // `role` berilmasa backend barcha (student+teacher) kutilayotgan a'zolikni
+  // qaytaradi — har bir element o'z `role` maydoniga ega, shuning uchun
+  // tasdiqlashda shu maydon orqali to'g'ri endpointga yo'naltiramiz.
+  pendingMemberships: (centerId, role) =>
+    client.get(`/api/centers/${centerId}/memberships/pending/${role ? `?role=${role}` : ''}`),
   approveStudent: (centerId, payload) =>
     client.post(`/api/centers/${centerId}/approve-student/`, payload),
+  approveTeacher: (centerId, payload) =>
+    client.post(`/api/centers/${centerId}/approve-teacher/`, payload),
+  approveManager: (centerId, payload) =>
+    client.post(`/api/centers/${centerId}/approve-manager/`, payload),
   removeMembership: (centerId, membershipId) =>
     client.delete(`/api/centers/${centerId}/memberships/${membershipId}/`),
   studentsMemberships: (centerId) =>
@@ -374,6 +488,11 @@ export const managerApi = {
   // Eng ko'p noto'g'ri javob berilgan savollar (menejer analitikasi).
   questionAnalytics: (centerId) =>
     client.get('/api/questions/analytics/', { params: { center: centerId } }),
+  // Qiyinlik darajasi bo'yicha savollar taqsimoti + har darajadagi o'rtacha
+  // to'g'rilik foizi. Javob: { total_questions, by_difficulty: [{ label,
+  // count, avg_correct_rate }] }.
+  questionDifficultyStats: (centerId) =>
+    client.get('/api/manager/question-difficulty-stats/', { params: { center: centerId } }),
   // Markazning eng yaxshi o'quvchilari (premium markazlar uchun — bo'lmasa 403).
   topStudents: (centerId) => client.get(`/api/centers/${centerId}/top-students/`),
   // Essay baholash: olimpiadaning barcha yozma javoblari + bitta javobga ball.
@@ -393,6 +512,53 @@ export const ownerApi = {
     client.post(`/api/centers/${centerId}/teachers/create/`, payload),
   createManager: (centerId, payload) =>
     client.post(`/api/centers/${centerId}/managers/create/`, payload),
+  // Allaqachon tizimga kirgan egaga qo'shimcha (ikkinchi) markaz qo'shish.
+  // Ro'yxatdan o'tishdagi registerOrganization ichidagi `center` obyekti bilan
+  // AYNAN bir xil shakl: { name, organization_type, country, region, district,
+  // city, subjects: [] }. Yangi markaz odatda "kutilmoqda" holatida yaratiladi
+  // (admin tasdig'igacha), websaytdagi bilan bir xil.
+  registerCenter: (payload) => client.post('/api/centers/', payload),
+  // Xodim (a'zolik) rolini o'zgartirish — 'teacher' yoki 'manager'.
+  changeMemberRole: (centerId, membershipId, role) =>
+    client.post(`/api/centers/${centerId}/members/${membershipId}/change-role/`, { role }),
+
+  // ── Markazni tahrirlash / brending / logotip ────────────────────────
+  // Websaytdagi bilan bir xil endpointlar (src/services/api.js). updateCenter
+  // markaz maydonlarining ixtiyoriy qism-to'plamini yangilaydi (name, region,
+  // district, city, ...). branding faqat `brand_color` (#RRGGBB) qabul qiladi.
+  // uploadCenterImage — logotip; multipart/form-data, fayl `image` key bilan
+  // (uploadAvatar naqshi: RN'da fayl { uri, name, type } obyekti sifatida).
+  updateCenter: (centerId, payload) =>
+    client.patch(`/api/centers/${centerId}/`, payload),
+  updateCenterBranding: (centerId, brandColor) =>
+    client.patch(`/api/centers/${centerId}/branding/`, { brand_color: brandColor }),
+  uploadCenterImage: (centerId, imageUri, meta = {}) => {
+    const name = meta.name || (imageUri ? imageUri.split('/').pop() : '') || 'logo.jpg';
+    const type = meta.type || 'image/jpeg';
+    const formData = new FormData();
+    formData.append('image', { uri: imageUri, name, type });
+    return client.post(`/api/centers/${centerId}/image/`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
+  // ── Natijalar eksporti uchun olimpiadalar ro'yxati ───────────────────
+  // Websayt OwnerDashboard'i /api/olympiads/ ro'yxatini ishlatadi (backend
+  // rolga qarab markaz tadbirlarini qaytaradi). page_size=200 bilan barchasini
+  // olamiz. Har bir tadbir natijalari export helper orqali yuklab beriladi.
+  olympiads: () => client.get('/api/olympiads/', { params: { page_size: 200 } }),
+
+  // ── Markaz do'koni (shop) CRUD ───────────────────────────────────────
+  // Websaytdagi bilan bir xil endpointlar; center_id query bilan. Mahsulot
+  // maydonlari: title, description, coin_cost, stock, icon, is_active, features.
+  centerShopProducts: (centerId) =>
+    client.get('/api/center/shop/products/', { params: { center_id: centerId } }),
+  createCenterShopProduct: (centerId, body) =>
+    client.post('/api/center/shop/products/', body, { params: { center_id: centerId } }),
+  updateCenterShopProduct: (centerId, productId, body) =>
+    client.patch(`/api/center/shop/products/${productId}/`, body, { params: { center_id: centerId } }),
+  deleteCenterShopProduct: (centerId, productId) =>
+    client.delete(`/api/center/shop/products/${productId}/`, { params: { center_id: centerId } }),
 
   // ── Premium analitika va hisobotlar (OwnerPremiumScreen) ─────────────
   // Barchasi markaz owner/manager uchun; ba'zilari `center.is_premium` talab
@@ -430,10 +596,29 @@ export const ownerApi = {
   //   difficulty, created_at }]  (premium)
   questionBank: (centerId) =>
     client.get(`/api/centers/${centerId}/question-bank/`),
+  // Savollar bankiga savol qo'shish / o'chirish (websaytdagi bilan bir xil).
+  // payload: { text, subject, difficulty, options: [{text, correct}] } — odatda
+  // 4 variant, aynan bittasi correct:true.
+  addCenterQuestion: (centerId, payload) =>
+    client.post(`/api/centers/${centerId}/question-bank/`, payload),
+  deleteCenterQuestion: (centerId, qId) =>
+    client.delete(`/api/centers/${centerId}/question-bank/${qId}/`),
   // manager-logs → [{ id, manager_id, manager_name, action_type,
   //   target_user_id, target_name, description, created_at }]  (faqat OWNER)
   managerLogs: (centerId, params) =>
     client.get(`/api/centers/${centerId}/manager-logs/`, { params: params || {} }),
+  // group-stats → { groups: [{ group_tag, student_count, avg_score,
+  //   top_student: { name, score }, weak_students: [{ name, score, user_id }],
+  //   olympiad_participations }] }  (premium — 403 { upgrade_required })
+  groupStats: (centerId, groupTag = '') =>
+    client.get('/api/analytics/group-stats/', {
+      params: { center_id: centerId, ...(groupTag ? { group_tag: groupTag } : {}) },
+    }),
+  // centers/ranking → barcha tasdiqlangan markazlar reytingi (PUBLIC, premium
+  //   EMAS, markazga filtrlanmaydi): [{ rank, center_id, center_name,
+  //   organization_type, region, student_count, total_attempts, average_score,
+  //   top_score }]
+  centerRanking: () => client.get('/api/centers/ranking/'),
 };
 
 export const adminApi = {
@@ -442,6 +627,10 @@ export const adminApi = {
   rejectCenter: (centerId) => client.post(`/api/admin/centers/${centerId}/reject/`),
   users: (params) => client.get('/api/admin/users/', { params }),
   auditLog: (params) => client.get('/api/admin/audit-log/', { params }),
+  // Fan kategoriyalari — yangi fan qo'shish (websaytdagi Admin "Fanlar" bo'limi
+  // bilan bir xil). GET ro'yxatni, POST yangisini qo'shadi.
+  subjects: () => client.get('/api/subjects/'),
+  createSubject: (name) => client.post('/api/subjects/', { name }),
 
   // ── Platforma analitikasi (faqat platform admin; barchasi GET) ───────
   // Websaytdagi Admin "Tahlil" tabi bilan bir xil endpointlar. Har biri
@@ -499,7 +688,9 @@ export const parentApi = {
   linkChild: (payload) => client.post('/api/me/parent/link/', payload),
   // Farzand bilan bog'lanishni bekor qilish — DELETE, 204 qaytaradi.
   unlinkChild: (studentId) => client.delete(`/api/me/parent/link/${studentId}/`),
-  childReportPdf: (studentId) => client.get(`/api/me/parent/children/${studentId}/report/`),
+  // Test-rejimda haftalik hisobot xabarini darhol yuborish (haqiqiy
+  // hisobotdan oldin ko'rib chiqish uchun) — Telegram orqali boradi.
+  sendTestWeeklyDigest: (studentId) => client.post(`/api/me/parent/children/${studentId}/test-digest/`),
   // Farzandning AI muvaffaqiyat bashorati. Javob:
   // { avg_score, attempts_count, subject_performance,
   //   predictions: { presidential_school, al_xorazmiy, dtm }, ai_analysis }
@@ -535,6 +726,46 @@ export const notificationsApi = {
   list: () => client.get('/api/notifications/'),
   markRead: (id) => client.post(`/api/notifications/${id}/read/`),
   markAllRead: () => client.post('/api/notifications/read-all/'),
+  // Expo push tokenni backendga ro'yxatdan o'tkazadi (update_or_create), shunda
+  // backend keyinchalik shu qurilmaga push yubora oladi.
+  subscribePush: (expoPushToken) =>
+    client.post('/api/notifications/subscribe-mobile/', { expo_push_token: expoPushToken }),
+};
+
+// Olimpiada natijalarini tanlangan formatda ('csv' | 'xlsx' | 'pdf') yuklab
+// olib, tizim "Ulashish" oynasi orqali saqlash/ulashishga beradi. Websaytdagi
+// downloadOlympiadResults'ning React Native ekvivalenti: URL.createObjectURL +
+// <a> download RN'da mavjud emas, shu bois expo-file-system bilan (Bearer token
+// header) keshga yuklab, expo-sharing bilan ulashamiz. XLSX/PDF backend'da
+// Plus/Pro obuna talab qilishi mumkin (403) — chaqiruvchi xatoni ushlaydi.
+export const downloadOlympiadResults = async (olympiadId, format = 'csv') => {
+  const fmt = (format || 'csv').toLowerCase();
+  const url = `${API_BASE_URL}/api/olympiads/${olympiadId}/export/?format=${encodeURIComponent(fmt)}`;
+  const destination = new File(Paths.cache, `olympy-results-${olympiadId}.${fmt}`);
+  const file = await File.downloadFileAsync(url, destination, {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    idempotent: true,
+  });
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(file.uri);
+  }
+  return file.uri;
+};
+
+// Farzandning PDF progress hisobotini yuklab, "Ulashish" oynasi orqali
+// saqlash/ulashishga beradi — downloadOlympiadResults bilan bir xil naqsh.
+export const downloadChildReportPdf = async (studentId, childName) => {
+  const url = `${API_BASE_URL}/api/me/parent/children/${studentId}/report/`;
+  const safeName = (childName || 'farzand').replace(/[^\w\-]+/g, '_');
+  const destination = new File(Paths.cache, `olympy-hisobot-${safeName}.pdf`);
+  const file = await File.downloadFileAsync(url, destination, {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    idempotent: true,
+  });
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(file.uri);
+  }
+  return file.uri;
 };
 
 export default client;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, Alert, Modal, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../services/ThemeContext';
 import { FONTS } from '../constants/typography';
@@ -14,8 +14,17 @@ import SectionHeader from '../components/SectionHeader';
 import DonutProgress from '../components/DonutProgress';
 import LoadingState from '../components/LoadingState';
 import ErrorState from '../components/ErrorState';
+import StreakWarningBanner from '../components/StreakWarningBanner';
+import DailyGoalCard from '../components/DailyGoalCard';
+import SuggestedOlympiadCard from '../components/SuggestedOlympiadCard';
+import PeerComparisonCard from '../components/PeerComparisonCard';
+import ProgressComparisonCard from '../components/ProgressComparisonCard';
+import ActivityLeaderboardCard from '../components/ActivityLeaderboardCard';
+import RivalActivityCard from '../components/RivalActivityCard';
+import WeeklyContestCard from '../components/WeeklyContestCard';
 import useFetch from '../services/useFetch';
-import { studentApi, notificationsApi } from '../services/api';
+import { studentApi, notificationsApi, parentApi } from '../services/api';
+import ParentRequestsSection from '../components/ParentRequestsSection';
 import { useAuth } from '../services/AuthContext';
 import {
   BellIcon,
@@ -32,6 +41,9 @@ import {
   SettingsIcon,
   ProfileBadgeIcon,
   SparkleIcon,
+  BarsIcon,
+  ChevronRightIcon,
+  CheckIcon,
 } from '../components/icons/Icons';
 
 const asArray = (data) => (Array.isArray(data) ? data : data?.results || data?.entries || []);
@@ -41,6 +53,22 @@ const formatWhen = (iso) => {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleDateString('uz-UZ', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+};
+
+// Kalendar tadbirlarini oy bo'yicha guruhlaydi (websaytdagi bilan bir xil):
+// [{ month: 'Iyul 2026', items: [...] }] — starts_at tartibida.
+const groupByMonth = (items) => {
+  const map = new Map();
+  (items || []).forEach((o) => {
+    const d = o.starts_at ? new Date(o.starts_at) : null;
+    const key =
+      d && !Number.isNaN(d.getTime())
+        ? d.toLocaleDateString('uz-UZ', { year: 'numeric', month: 'long' })
+        : 'Belgilanmagan';
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(o);
+  });
+  return Array.from(map.entries()).map(([month, list]) => ({ month, items: list }));
 };
 
 // HH:MM:SS ko'rinishidagi countdown (soatlik qism 0 bo'lsa MM:SS).
@@ -93,6 +121,43 @@ export default function StudentHomeScreen({ navigation }) {
     };
   }, []);
 
+  // Meni "farzand" sifatida kuzatmoqchi bo'lgan ota-onalarning so'rovlari —
+  // asosiy ekranni bloklamasligi uchun alohida yuklanadi. Avval xato bilan
+  // ParentScreen.js'da edi (ota-onalar uchun), aslida bu STUDENT funksiyasi.
+  const requestsFetch = useFetch(
+    () => parentApi.parentRequests().then((r) => asArray(r.data)),
+    []
+  );
+  const [respondingId, setRespondingId] = useState(null);
+  const parentRequests = requestsFetch.data || [];
+
+  // Olimpiada kalendari — modal ochilganda bir marta yuklanadi (asosiy home
+  // yuklanishiga qo'shimcha so'rov bermaslik uchun lazily).
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [calendar, setCalendar] = useState({ loading: false, items: null, error: false });
+  const openCalendar = () => {
+    setCalendarOpen(true);
+    if (calendar.items || calendar.loading) return;
+    setCalendar({ loading: true, items: null, error: false });
+    studentApi
+      .olympiadCalendar({ days: 90 })
+      .then((r) => setCalendar({ loading: false, items: r.data?.upcoming || [], error: false }))
+      .catch(() => setCalendar({ loading: false, items: [], error: true }));
+  };
+
+  const respondParentRequest = async (linkId, accept) => {
+    if (respondingId) return;
+    setRespondingId(linkId);
+    try {
+      await parentApi.respondParentRequest(linkId, accept);
+      requestsFetch.reload();
+    } catch (e) {
+      Alert.alert('Xatolik', "So'rovni qayta ishlab bo'lmadi. Keyinroq urinib ko'ring.");
+    } finally {
+      setRespondingId(null);
+    }
+  };
+
   if (loading) return <LoadingState message="Ma'lumotlar yuklanmoqda…" />;
   if (error && !data) return <ErrorState onRetry={reload} />;
 
@@ -144,8 +209,10 @@ export default function StudentHomeScreen({ navigation }) {
 
   const menuItems = [
     { label: 'AI Tahlil', icon: <SparkleIcon size={18} color={colors.purple} />, onPress: () => navigation.navigate('Analytics') },
+    { label: "O'sishim", icon: <BarsIcon size={18} color={colors.blue} />, onPress: () => navigation.navigate('Progress') },
     { label: "Do'kon", icon: <CoinIcon size={18} />, onPress: () => navigation.navigate('Shop') },
     { label: 'Reyting', icon: <TrophyIcon size={17} color={colors.gold} strokeWidth={2} full={false} />, onPress: () => navigation.navigate('Leaderboard') },
+    { label: 'Markazlar reytingi', icon: <TrophyIcon size={17} color={colors.gold} strokeWidth={2} full />, onPress: () => navigation.navigate('CenterRanking') },
     { label: '1v1 Duel', icon: <LightningIcon size={18} />, onPress: () => navigation.navigate('DuelList') },
     { label: 'Premiumga o\'tish', icon: <CrownIcon size={18} />, onPress: () => navigation.navigate('Premium') },
     { label: 'Parolni o\'zgartirish', icon: <SettingsIcon size={18} color={colors.textSecondary} />, onPress: () => navigation.navigate('ChangePassword') },
@@ -179,6 +246,27 @@ export default function StudentHomeScreen({ navigation }) {
             <Avatar letter={initial} size={38} fontSize={15} />
           </TouchableOpacity>
         </View>
+
+        {Array.isArray(user?.badges) && user.badges.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.badgesScroll}
+            contentContainerStyle={styles.badgesRow}
+          >
+            {user.badges.map((b, bi) => (
+              <Badge
+                key={b.id ?? bi}
+                label={`${b.icon ? b.icon + ' ' : ''}${b.title || ''}`}
+                color={colors.blueLight}
+                background={tints.blue14}
+                borderColor={tints.blueBorder30}
+                size={11}
+                style={styles.badgeChip}
+              />
+            ))}
+          </ScrollView>
+        ) : null}
 
         <View style={styles.kpiGrid}>
           <Card radius={18} style={styles.kpiCard}>
@@ -240,7 +328,7 @@ export default function StudentHomeScreen({ navigation }) {
               <Text style={styles.miniLink}>Ko'rish →</Text>
             </Card>
           </TouchableOpacity>
-          <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('Mashq')}>
+          <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('DailyQuestions')}>
             <Card radius={18} style={styles.miniCard}>
               <IconBox size={30} radius={9} background={tints.blue14}>
                 <LightningIcon size={15} />
@@ -281,6 +369,40 @@ export default function StudentHomeScreen({ navigation }) {
             <Text style={styles.rivalText}>Sizning rekordingiz: {streak.longest_streak ?? 0} kun ketma-ket</Text>
           </Card>
         </ScrollView>
+
+        {parentRequests.length > 0 ? (
+          <ParentRequestsSection
+            requests={parentRequests}
+            respondingId={respondingId}
+            onRespond={respondParentRequest}
+          />
+        ) : null}
+
+        {/* Retention widget'lari — har biri o'z ma'lumotini mustaqil yuklaydi va
+            ko'rsatadigan narsa bo'lmasa jim (null) qoladi. */}
+        <View style={styles.retentionSection}>
+          <StreakWarningBanner navigation={navigation} />
+          <DailyGoalCard />
+          <SuggestedOlympiadCard navigation={navigation} />
+          <PeerComparisonCard />
+          <ProgressComparisonCard />
+          <RivalActivityCard />
+          <WeeklyContestCard />
+          <ActivityLeaderboardCard />
+        </View>
+
+        <TouchableOpacity activeOpacity={0.85} onPress={openCalendar}>
+          <Card radius={18} style={styles.calendarEntry}>
+            <IconBox size={40} radius={12} background={tints.purple16}>
+              <CalendarIcon size={19} color={colors.purple} strokeWidth={1.9} />
+            </IconBox>
+            <View style={styles.calendarEntryText}>
+              <Text style={styles.calendarEntryTitle}>Olimpiada kalendari</Text>
+              <Text style={styles.calendarEntrySub}>Kelgusi 90 kun tadbirlari</Text>
+            </View>
+            <ChevronRightIcon size={15} color={colors.textMuted} />
+          </Card>
+        </TouchableOpacity>
 
         <SectionHeader title="Bugungi tadbirlar" action="Barchasi" onAction={() => navigation.navigate('Tadbirlar')} />
         {activeEvent ? (
@@ -342,6 +464,62 @@ export default function StudentHomeScreen({ navigation }) {
       </ScrollView>
       <Fab onPress={() => navigation.navigate('AiChat')} />
       <QuickMenu visible={menuOpen} onClose={() => setMenuOpen(false)} title="TEZ MENYU" items={menuItems} />
+
+      <Modal visible={calendarOpen} transparent animationType="slide" onRequestClose={() => setCalendarOpen(false)}>
+        <TouchableOpacity activeOpacity={1} style={styles.calOverlay} onPress={() => setCalendarOpen(false)} />
+        <View style={styles.calSheet}>
+          <View style={styles.calHandle} />
+          <Text style={styles.calTitle}>Olimpiada kalendari</Text>
+          <Text style={styles.calSub}>Kelgusi 90 kun ichidagi tadbirlar</Text>
+          <ScrollView style={styles.calScroll} showsVerticalScrollIndicator={false}>
+            {calendar.loading ? (
+              <ActivityIndicator color={colors.blue} style={{ marginVertical: 32 }} />
+            ) : calendar.error ? (
+              <Text style={styles.calEmpty}>Kalendarni yuklab bo'lmadi. Keyinroq urinib ko'ring.</Text>
+            ) : !calendar.items || calendar.items.length === 0 ? (
+              <Text style={styles.calEmpty}>Kelgusi 90 kunda olimpiada topilmadi</Text>
+            ) : (
+              groupByMonth(calendar.items).map((g) => (
+                <View key={g.month} style={styles.calGroup}>
+                  <Text style={styles.calMonth}>{g.month}</Text>
+                  {g.items.map((o) => (
+                    <View key={o.id} style={styles.calRow}>
+                      <View style={styles.calRowText}>
+                        <Text style={styles.calRowName} numberOfLines={1}>{o.name}</Text>
+                        <Text style={styles.calRowSub} numberOfLines={1}>
+                          {[o.subject, o.days_until === 0 ? 'Bugun' : `${o.days_until} kundan keyin`]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </Text>
+                      </View>
+                      {o.registered ? (
+                        <View style={styles.calRegistered}>
+                          <CheckIcon size={13} color={colors.greenLight} />
+                          <Text style={styles.calRegisteredText}>Qatnashilgan</Text>
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          activeOpacity={0.85}
+                          style={styles.calJoinBtn}
+                          onPress={() => {
+                            setCalendarOpen(false);
+                            navigation.navigate('Tadbirlar');
+                          }}
+                        >
+                          <Text style={styles.calJoinText}>Qatnashish</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              ))
+            )}
+          </ScrollView>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => setCalendarOpen(false)}>
+            <Text style={styles.calCancel}>Yopish</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -421,6 +599,19 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.bg,
   },
+  badgesScroll: {
+    marginTop: 12,
+  },
+  badgesRow: {
+    flexDirection: 'row',
+    gap: 7,
+    paddingRight: 4,
+  },
+  badgeChip: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 9,
+  },
   kpiGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -449,6 +640,10 @@ const makeStyles = (colors, tints) => StyleSheet.create({
   },
   cardsScroll: {
     marginTop: 14,
+  },
+  retentionSection: {
+    marginTop: 14,
+    gap: 12,
   },
   cardsRow: {
     gap: 10,
@@ -581,5 +776,138 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     fontFamily: FONTS.semibold,
     color: colors.textSecondary,
     marginTop: 2,
+  },
+  calendarEntry: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 6,
+  },
+  calendarEntryText: {
+    flex: 1,
+  },
+  calendarEntryTitle: {
+    fontSize: 14,
+    fontFamily: FONTS.extrabold,
+    color: colors.text,
+  },
+  calendarEntrySub: {
+    fontSize: 11.5,
+    fontFamily: FONTS.semibold,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  calOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.overlay,
+  },
+  calSheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 14,
+    paddingHorizontal: 22,
+    paddingBottom: 34,
+    maxHeight: '75%',
+  },
+  calHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.borderDashed,
+    alignSelf: 'center',
+  },
+  calTitle: {
+    fontSize: 16,
+    fontFamily: FONTS.extrabold,
+    color: colors.text,
+    marginTop: 16,
+  },
+  calSub: {
+    fontSize: 11.5,
+    fontFamily: FONTS.semibold,
+    color: colors.textSecondary,
+    marginTop: 2,
+    marginBottom: 8,
+  },
+  calScroll: {
+    flexGrow: 0,
+  },
+  calGroup: {
+    marginTop: 12,
+    gap: 8,
+  },
+  calMonth: {
+    fontSize: 11,
+    fontFamily: FONTS.extrabold,
+    color: colors.purple,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  calRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    backgroundColor: colors.surfaceDeep,
+    paddingVertical: 11,
+    paddingHorizontal: 13,
+  },
+  calRowText: {
+    flex: 1,
+  },
+  calRowName: {
+    fontSize: 13,
+    fontFamily: FONTS.extrabold,
+    color: colors.text,
+  },
+  calRowSub: {
+    fontSize: 11,
+    fontFamily: FONTS.semibold,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  calRegistered: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  calRegisteredText: {
+    fontSize: 11,
+    fontFamily: FONTS.extrabold,
+    color: colors.greenLight,
+  },
+  calJoinBtn: {
+    backgroundColor: colors.blue,
+    borderRadius: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+  },
+  calJoinText: {
+    fontSize: 12,
+    fontFamily: FONTS.extrabold,
+    color: colors.white,
+  },
+  calEmpty: {
+    fontSize: 12.5,
+    fontFamily: FONTS.semibold,
+    color: colors.textMuted,
+    textAlign: 'center',
+    paddingVertical: 30,
+  },
+  calCancel: {
+    textAlign: 'center',
+    marginTop: 14,
+    fontSize: 13,
+    fontFamily: FONTS.bold,
+    color: colors.textMuted,
   },
 });

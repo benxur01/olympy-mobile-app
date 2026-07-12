@@ -12,8 +12,10 @@ import StatCard from '../components/StatCard';
 import LoadingState from '../components/LoadingState';
 import ErrorState from '../components/ErrorState';
 import useFetch from '../services/useFetch';
-import { analyticsApi } from '../services/api';
+import { analyticsApi, studentApi } from '../services/api';
 import { useAuth } from '../services/AuthContext';
+import PredictionBlock from '../components/PredictionBlock';
+import SvgLineChart from '../components/SvgLineChart';
 import {
   BackIcon,
   SparkleIcon,
@@ -75,6 +77,9 @@ export default function AnalyticsScreen({ navigation }) {
       analyticsApi.getCompetitorAnalysis(),
       analyticsApi.getErrorNotebook({ page: 1 }),
       analyticsApi.getRecommendedOlympiads(),
+      studentApi.predictions(),
+      analyticsApi.getHistoryChart(),
+      analyticsApi.getSubjectWeakness(),
     ]);
     return {
       weekly: results[0],
@@ -84,6 +89,9 @@ export default function AnalyticsScreen({ navigation }) {
       competitor: results[4],
       notebook: results[5],
       recommended: results[6],
+      predictions: results[7],
+      history: results[8],
+      weakness: results[9],
     };
   }, []);
 
@@ -136,6 +144,10 @@ export default function AnalyticsScreen({ navigation }) {
   const competitor = readSection(data?.competitor);
   const notebook = readSection(data?.notebook);
   const recommended = readSection(data?.recommended);
+  const history = readSection(data?.history);
+  const weakness = readSection(data?.weakness);
+  const predictionsSection = readSection(data?.predictions);
+  const predState = { loading: false, error: !predictionsSection.ok, data: predictionsSection.data };
 
   // ── Kichik yordamchi renderlar ────────────────────────────────────────────
   const InlineError = ({ text }) => (
@@ -170,6 +182,9 @@ export default function AnalyticsScreen({ navigation }) {
   const notebookRows = notebook.ok ? (notebook.data?.results || []) : [];
   const notebookCount = notebook.ok ? (notebook.data?.count || 0) : 0;
   const recommendedList = recommended.ok && Array.isArray(recommended.data) ? recommended.data : [];
+  const historyRows = history.ok && Array.isArray(history.data) ? history.data : [];
+  const historyPoints = historyRows.map((h) => ({ value: h.pct || 0 }));
+  const weaknessRows = weakness.ok && Array.isArray(weakness.data) ? weakness.data : [];
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -191,6 +206,14 @@ export default function AnalyticsScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.blue} />}
       >
+        {/* ─── AI muvaffaqiyat bashorati ───────────────────────────────────── */}
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle}>Muvaffaqiyat bashorati</Text>
+        </View>
+        <Card style={styles.card}>
+          <PredictionBlock state={predState} />
+        </Card>
+
         {/* ─── Haftalik xulosa ─────────────────────────────────────────────── */}
         <View style={styles.sectionHead}>
           <Text style={styles.sectionTitle}>Haftalik xulosa</Text>
@@ -392,6 +415,65 @@ export default function AnalyticsScreen({ navigation }) {
                 </View>
               )}
             </>
+          )}
+        </Card>
+
+        {/* ─── Olimpiada tarixi ────────────────────────────────────────────── */}
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle}>Olimpiada tarixi</Text>
+          {history.ok && historyRows.length > 0 ? (
+            <Text style={styles.sectionNote}>Oxirgi {historyRows.length} ta tadbir</Text>
+          ) : null}
+        </View>
+        <Card style={styles.card}>
+          {!history.ok ? (
+            history.locked ? (
+              <PremiumLock text="Olimpiada tarixi grafigi premium o'quvchilar uchun." />
+            ) : (
+              <InlineError text={history.detail} />
+            )
+          ) : historyRows.length === 0 ? (
+            <InlineEmpty text="Hali natija yo'q. Bir nechta tadbirda qatnashing." />
+          ) : (
+            <>
+              <SvgLineChart points={historyPoints} stroke={colors.blue} />
+              <Text style={styles.chartFoot}>Har bir tadbirdagi ball foizi (%)</Text>
+            </>
+          )}
+        </Card>
+
+        {/* ─── Fan bo'yicha zaiflik xaritasi ───────────────────────────────── */}
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle}>Zaiflik xaritasi</Text>
+          <Text style={styles.sectionNote}>Fan kesimida</Text>
+        </View>
+        <Card style={styles.card}>
+          {!weakness.ok ? (
+            weakness.locked ? (
+              <PremiumLock text="Fan bo'yicha zaiflik xaritasi premium o'quvchilar uchun." />
+            ) : (
+              <InlineError text={weakness.detail} />
+            )
+          ) : weaknessRows.length === 0 ? (
+            <InlineEmpty text="Hali ma'lumot yo'q. Bir nechta tadbirda qatnashing." />
+          ) : (
+            <View style={styles.list}>
+              {weaknessRows.map((w2, i) => {
+                const pct = w2.pct ?? 0;
+                return (
+                  <View key={`${w2.subject}-${i}`} style={styles.topicRow}>
+                    <View style={styles.topicHead}>
+                      <Text style={styles.topicSubject} numberOfLines={1}>{w2.subject}</Text>
+                      <Text style={[styles.topicPct, { color: pctColor(colors, pct) }]}>{pct}%</Text>
+                    </View>
+                    <ProgressBar progress={pct} height={8} color={pctColor(colors, pct)} />
+                    <View style={styles.topicFoot}>
+                      <Text style={styles.topicMeta}>{w2.correct}/{w2.total} to'g'ri</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
           )}
         </Card>
 
@@ -663,6 +745,13 @@ const makeStyles = (colors, tints) => StyleSheet.create({
   },
   card: {
     padding: 16,
+  },
+  chartFoot: {
+    marginTop: 8,
+    textAlign: 'center',
+    fontSize: 11,
+    fontFamily: FONTS.semibold,
+    color: colors.textSecondary,
   },
   list: {
     gap: 14,

@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Alert,
   AppState,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../services/ThemeContext';
@@ -39,7 +40,11 @@ export default function ExamScreen({ route, navigation }) {
 
   const [phase, setPhase] = useState('loading'); // loading | error | blocked | exam | result
   const [blockedMsg, setBlockedMsg] = useState('');
+  // Cheating-himoya: savollar bitta-bitta yuklanadi. `questions` — siyrak (sparse)
+  // massiv: faqat ko'rilgan indekslar to'ldiriladi. Umumiy savollar soni serverdan
+  // (`totalQuestions`) keladi, `questions.length` EMAS.
   const [questions, setQuestions] = useState([]);
+  const [totalQuestions, setTotalQuestions] = useState(0);
   const [answers, setAnswers] = useState({});
   // Kod (IT) savollari uchun tanlangan dasturlash tili: { [qid]: 'python' }.
   // Kod matni `answers[qid]`da (string), til alohida saqlanadi.
@@ -53,6 +58,9 @@ export default function ExamScreen({ route, navigation }) {
 
   const startedAtRef = useRef(Date.now());
   const submittedRef = useRef(false);
+  // Bitta-bitta yuklangan savollarni indeks bo'yicha keshlaymiz — ko'rilgan
+  // savolga qaytilganda qayta so'rov ketmaydi.
+  const cachedQuestionsRef = useRef({});
 
   // Anti-cheat: ekrandan chiqishlar sonini va qurilma ID'sini kuzatamiz.
   // Qurilma ID sessiya davomida barqaror — backend parallel-qurilma
@@ -65,31 +73,57 @@ export default function ExamScreen({ route, navigation }) {
   }
   const MAX_TAB_ESCAPES = 3;
 
+  // Timer sinxronizatsiyasi — har bir muvaffaqiyatli fetch javobidagi `session`
+  // dan. `expires_at` bo'lsa qolgan vaqtni server soatiga qarab qayta hisoblaymiz
+  // (absolyut vaqt — har chaqiruvda to'g'ri qoladi). `initial=true` bootstrap'da:
+  // expires_at bo'lmasa duration_seconds yoki ekranga uzatilgan daqiqalarga
+  // qaytamiz. Keyingi (navigatsiya) fetch'larida expires_at bo'lmasa timerga
+  // tegmaymiz — aks holda har o'tishda vaqt to'liq muddatga qaytib ketardi.
+  const applySessionTiming = useCallback(
+    (session, initial) => {
+      const s = session || {};
+      if (s.expires_at) {
+        const end = new Date(s.expires_at).getTime();
+        const now = s.server_now ? new Date(s.server_now).getTime() : Date.now();
+        const secs = Math.round((end - now) / 1000);
+        setTimeLeft(secs && secs > 0 ? secs : null);
+        return;
+      }
+      if (!initial) return;
+      let secs = null;
+      if (s.duration_seconds) secs = s.duration_seconds;
+      else if (durationMinutes) secs = durationMinutes * 60;
+      setTimeLeft(secs && secs > 0 ? secs : null);
+    },
+    [durationMinutes]
+  );
+
+  // Bootstrap: 0-indeksli savolni olib, timer/sessiya va umumiy savollar sonini
+  // o'rnatamiz. `phase` o'tishlari avvalgidek — faqat butun ro'yxat o'rniga
+  // bitta savol olinadi.
   const load = useCallback(async () => {
     setPhase('loading');
     try {
-      const { data } = await studentApi.olympiadQuestions(olympiadId);
+      const { data } = await studentApi.olympiadQuestions(olympiadId, 0);
       const list = Array.isArray(data?.questions) ? data.questions : [];
-      if (!list.length) {
+      const total =
+        typeof data?.total_questions === 'number' ? data.total_questions : list.length;
+      if (!total) {
         setBlockedMsg("Bu tadbirda savollar yo'q.");
         setPhase('blocked');
         return;
       }
-      setQuestions(list);
-      // Timer: server expires_at bilan sinxron; bo'lmasa duration_seconds yoki
-      // ekranga uzatilgan daqiqalar.
-      const session = data?.session || {};
-      let secs = null;
-      if (session.expires_at) {
-        const end = new Date(session.expires_at).getTime();
-        const now = session.server_now ? new Date(session.server_now).getTime() : Date.now();
-        secs = Math.round((end - now) / 1000);
-      } else if (session.duration_seconds) {
-        secs = session.duration_seconds;
-      } else if (durationMinutes) {
-        secs = durationMinutes * 60;
+      const first = list[0];
+      if (first) {
+        cachedQuestionsRef.current[0] = first;
+        setQuestions((prev) => {
+          const next = Array.isArray(prev) ? prev.slice() : [];
+          next[0] = first;
+          return next;
+        });
       }
-      setTimeLeft(secs && secs > 0 ? secs : null);
+      setTotalQuestions(total);
+      applySessionTiming(data?.session, true);
       startedAtRef.current = Date.now();
       setPhase('exam');
     } catch (e) {
@@ -102,14 +136,59 @@ export default function ExamScreen({ route, navigation }) {
         setPhase('error');
       }
     }
-  }, [olympiadId, durationMinutes]);
+  }, [olympiadId, applySessionTiming]);
 
   useEffect(() => {
     load();
   }, [load]);
 
+  // Joriy indeks o'zgarganda: keshda bo'lsa darhol ishlatamiz, bo'lmasa shu
+  // indeksdagi savolni serverdan olib keshlaymiz va siyrak massivga qo'yamiz.
+  // Faqat `exam` fazasida ishlaydi — 0-indeks bootstrap `load` tomonidan
+  // keshlangani uchun bu yerda qayta so'rov ketmaydi.
+  useEffect(() => {
+    if (phase !== 'exam') return undefined;
+    const idx = index;
+    const cached = cachedQuestionsRef.current[idx];
+    if (cached) {
+      setQuestions((prev) => {
+        const next = Array.isArray(prev) ? prev.slice() : [];
+        next[idx] = cached;
+        return next;
+      });
+      return undefined;
+    }
+    let cancelled = false;
+    studentApi
+      .olympiadQuestions(olympiadId, idx)
+      .then(({ data }) => {
+        if (cancelled) return;
+        const list = Array.isArray(data?.questions) ? data.questions : [];
+        const question = list[0];
+        if (question) {
+          cachedQuestionsRef.current[idx] = question;
+          setQuestions((prev) => {
+            const next = Array.isArray(prev) ? prev.slice() : [];
+            next[idx] = question;
+            return next;
+          });
+        }
+        if (typeof data?.total_questions === 'number') setTotalQuestions(data.total_questions);
+        applySessionTiming(data?.session, false);
+      })
+      .catch(() => {
+        // Bitta savol yuklanmadi — slot bo'sh qoladi (spinner ko'rinadi);
+        // foydalanuvchi qayta o'tsa yana urinib ko'riladi. Butun ekran xatosi
+        // qilmaymiz.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, index, olympiadId, applySessionTiming]);
+
   const answeredCount = useMemo(
-    () => questions.filter((q) => answers[q.id] !== undefined && answers[q.id] !== '').length,
+    () =>
+      questions.filter((q) => q && answers[q.id] !== undefined && answers[q.id] !== '').length,
     [questions, answers]
   );
 
@@ -117,6 +196,7 @@ export default function ExamScreen({ route, navigation }) {
     const ans = {};
     const codeAns = {};
     questions.forEach((q) => {
+      if (!q) return; // siyrak massivning to'ldirilmagan sloti
       const v = answers[q.id];
       if (v === undefined || v === null || v === '') return;
       const t = q.question_type;
@@ -260,7 +340,7 @@ export default function ExamScreen({ route, navigation }) {
   const confirmFinish = () => {
     Alert.alert(
       'Yakunlash',
-      `${answeredCount}/${questions.length} savolga javob berdingiz. Yakunlaysizmi?`,
+      `${answeredCount}/${totalQuestions} savolga javob berdingiz. Yakunlaysizmi?`,
       [
         { text: 'Bekor qilish', style: 'cancel' },
         { text: 'Yakunlash', style: 'destructive', onPress: doSubmit },
@@ -308,7 +388,7 @@ export default function ExamScreen({ route, navigation }) {
   if (phase === 'result') {
     const score = result?.score ?? 0;
     const correct = result?.correct_count ?? result?.correct ?? 0;
-    const total = result?.total_questions ?? questions.length;
+    const total = result?.total_questions ?? totalQuestions;
     const rank = result?.rank;
     const already = result?.detail;
     return (
@@ -346,9 +426,10 @@ export default function ExamScreen({ route, navigation }) {
   }
 
   const q = questions[index] || {};
+  const qReady = !!q.id;
   const qType = q.question_type || 'mcq';
   const options = Array.isArray(q.options) ? q.options : [];
-  const progress = questions.length ? ((index + 1) / questions.length) * 100 : 0;
+  const progress = totalQuestions ? ((index + 1) / totalQuestions) * 100 : 0;
   const timerLow = timeLeft !== null && timeLeft <= 60;
 
   return (
@@ -381,65 +462,76 @@ export default function ExamScreen({ route, navigation }) {
       ) : null}
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
-        <Text style={styles.qLabel}>{index + 1}-SAVOL / {questions.length}</Text>
-        <Text style={styles.qText}>{q.text}</Text>
+        <Text style={styles.qLabel}>{index + 1}-SAVOL / {totalQuestions}</Text>
 
-        {isTextType(qType) ? (
-          <TextInput
-            style={styles.textAnswer}
-            placeholder="Javobingizni yozing…"
-            placeholderTextColor={colors.textMuted}
-            value={answers[q.id] != null ? String(answers[q.id]) : ''}
-            onChangeText={(t) => setAnswer(q.id, t)}
-            multiline
-            textAlignVertical="top"
-          />
-        ) : qType === 'code' ? (
-          <CodeQuestion
-            key={q.id}
-            question={q}
-            code={answers[q.id] != null ? String(answers[q.id]) : ''}
-            onChangeCode={(t) => setAnswer(q.id, t)}
-            language={codeLangs[q.id] || q.programming_language || 'python'}
-            onChangeLanguage={(lng) => setCodeLangs((prev) => ({ ...prev, [q.id]: lng }))}
-          />
-        ) : (
-          <View style={styles.options}>
-            {options.map((opt, oi) => {
-              const active =
-                qType === 'multiple_select'
-                  ? Array.isArray(answers[q.id]) && answers[q.id].includes(oi)
-                  : answers[q.id] === oi;
-              return (
-                <TouchableOpacity
-                  key={oi}
-                  activeOpacity={0.8}
-                  onPress={() =>
-                    qType === 'multiple_select' ? toggleMulti(q.id, oi) : setAnswer(q.id, oi)
-                  }
-                  style={[styles.option, active ? styles.optionActive : null]}
-                >
-                  <View style={[styles.optionKey, active ? styles.optionKeyActive : null]}>
-                    <Text style={[styles.optionKeyText, active ? { color: colors.white } : null]}>
-                      {LETTERS[oi] || oi + 1}
-                    </Text>
-                  </View>
-                  <Text style={[styles.optionText, active ? styles.optionTextActive : null]}>
-                    {String(opt)}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+        {!qReady ? (
+          <View style={styles.qLoadingWrap}>
+            <ActivityIndicator color={colors.blue} />
+            <Text style={styles.qLoadingText}>Savol yuklanmoqda…</Text>
           </View>
+        ) : (
+          <>
+            <Text style={styles.qText}>{q.text}</Text>
+
+            {isTextType(qType) ? (
+              <TextInput
+                style={styles.textAnswer}
+                placeholder="Javobingizni yozing…"
+                placeholderTextColor={colors.textMuted}
+                value={answers[q.id] != null ? String(answers[q.id]) : ''}
+                onChangeText={(t) => setAnswer(q.id, t)}
+                multiline
+                textAlignVertical="top"
+              />
+            ) : qType === 'code' ? (
+              <CodeQuestion
+                key={q.id}
+                question={q}
+                code={answers[q.id] != null ? String(answers[q.id]) : ''}
+                onChangeCode={(t) => setAnswer(q.id, t)}
+                language={codeLangs[q.id] || q.programming_language || 'python'}
+                onChangeLanguage={(lng) => setCodeLangs((prev) => ({ ...prev, [q.id]: lng }))}
+              />
+            ) : (
+              <View style={styles.options}>
+                {options.map((opt, oi) => {
+                  const active =
+                    qType === 'multiple_select'
+                      ? Array.isArray(answers[q.id]) && answers[q.id].includes(oi)
+                      : answers[q.id] === oi;
+                  return (
+                    <TouchableOpacity
+                      key={oi}
+                      activeOpacity={0.8}
+                      onPress={() =>
+                        qType === 'multiple_select' ? toggleMulti(q.id, oi) : setAnswer(q.id, oi)
+                      }
+                      style={[styles.option, active ? styles.optionActive : null]}
+                    >
+                      <View style={[styles.optionKey, active ? styles.optionKeyActive : null]}>
+                        <Text style={[styles.optionKeyText, active ? { color: colors.white } : null]}>
+                          {LETTERS[oi] || oi + 1}
+                        </Text>
+                      </View>
+                      <Text style={[styles.optionText, active ? styles.optionTextActive : null]}>
+                        {String(opt)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+          </>
         )}
 
         <View style={styles.navigator}>
-          {questions.map((qq, i) => {
-            const answered = answers[qq.id] !== undefined && answers[qq.id] !== '';
+          {Array.from({ length: totalQuestions }).map((_, i) => {
+            const qq = questions[i];
+            const answered = qq && answers[qq.id] !== undefined && answers[qq.id] !== '';
             const current = i === index;
             return (
               <TouchableOpacity
-                key={qq.id}
+                key={i}
                 activeOpacity={0.8}
                 onPress={() => setIndex(i)}
                 style={[
@@ -475,7 +567,7 @@ export default function ExamScreen({ route, navigation }) {
           disabled={index === 0}
           onPress={() => setIndex((i) => Math.max(0, i - 1))}
         />
-        {index < questions.length - 1 ? (
+        {index < totalQuestions - 1 ? (
           <Button
             title="Keyingi"
             variant="dark"
@@ -483,7 +575,7 @@ export default function ExamScreen({ route, navigation }) {
             radius={13}
             fontSize={14}
             style={styles.footerBtn}
-            onPress={() => setIndex((i) => Math.min(questions.length - 1, i + 1))}
+            onPress={() => setIndex((i) => Math.min(totalQuestions - 1, i + 1))}
           />
         ) : null}
         <Button
@@ -589,6 +681,17 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     color: colors.text,
     lineHeight: 26.25,
     marginTop: 8,
+  },
+  qLoadingWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 48,
+  },
+  qLoadingText: {
+    fontSize: 13,
+    fontFamily: FONTS.semibold,
+    color: colors.textSecondary,
   },
   options: {
     gap: 9,

@@ -43,10 +43,9 @@ export default function ProctoringScreen() {
   const AVATAR_COLORS = makeAVATAR_COLORS(colors, tints);
   const BADGE = makeBADGE(colors, tints);
   const { user } = useAuth();
-  // Sof menejer (faqat ROLE_MANAGER, teacher a'zoligisiz) uchun
-  // /api/me/teacher/olympiads/ bo'sh qaytaradi — bunday holda faol tadbirni
-  // markaz statistikasidan topamiz.
-  const isManager = (user?.roles || []).includes('manager');
+  // Sof menejer/direktor (teacher a'zoligisiz) uchun /api/me/teacher/olympiads/
+  // bo'sh qaytaradi — bunday holda faol tadbirni markaz statistikasidan topamiz.
+  const isManager = ['manager', 'owner', 'director'].some((r) => (user?.roles || []).includes(r));
   const [query, setQuery] = useState('');
   // Faol tadbir countdown'i uchun bir soniyalik soat.
   const [now, setNow] = useState(Date.now());

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, RefreshControl, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../services/ThemeContext';
 import { FONTS } from '../constants/typography';
@@ -13,10 +13,10 @@ import LoadingState from '../components/LoadingState';
 import ErrorState from '../components/ErrorState';
 import EmptyState from '../components/EmptyState';
 import useFetch from '../services/useFetch';
-import { managerApi } from '../services/api';
+import { managerApi, downloadOlympiadResults } from '../services/api';
 import { useAuth } from '../services/AuthContext';
 import { centerIdForUser } from '../services/roles';
-import { TrophyIcon, EditIcon, BarsIcon } from '../components/icons/Icons';
+import { TrophyIcon, EditIcon, BarsIcon, DownloadIcon } from '../components/icons/Icons';
 
 const asArray = (data) => (Array.isArray(data) ? data : data?.results || []);
 
@@ -29,6 +29,27 @@ export default function ManagerResultsScreen({ navigation }) {
   const { user } = useAuth();
   const centerId = centerIdForUser(user);
   const [tab, setTab] = useState(0); // 0 = Tadbirlar, 1 = Savollar
+  const [exportingId, setExportingId] = useState(null);
+
+  const exportResults = (olympiadId, format) => {
+    if (exportingId) return;
+    setExportingId(olympiadId);
+    downloadOlympiadResults(olympiadId, format)
+      .catch((e) => {
+        const detail = e?.response?.data?.detail;
+        Alert.alert('Xatolik', detail || "Natijalarni eksport qilib bo'lmadi.");
+      })
+      .finally(() => setExportingId(null));
+  };
+
+  const confirmExport = (olympiadId) => {
+    Alert.alert('Natijalarni eksport qilish', 'Formatni tanlang', [
+      { text: 'CSV', onPress: () => exportResults(olympiadId, 'csv') },
+      { text: 'Excel', onPress: () => exportResults(olympiadId, 'xlsx') },
+      { text: 'PDF', onPress: () => exportResults(olympiadId, 'pdf') },
+      { text: 'Bekor qilish', style: 'cancel' },
+    ]);
+  };
 
   const { data, loading, refreshing, error, reload, refresh } = useFetch(async () => {
     const [stats, qa] = await Promise.all([
@@ -117,6 +138,17 @@ export default function ManagerResultsScreen({ navigation }) {
                         icon={<EditIcon size={13} color={colors.textSecondary} />}
                         style={styles.eventBtn}
                         onPress={() => navigation.navigate('EssayGrading')}
+                      />
+                      <Button
+                        title={exportingId === e.olympiad_id ? '…' : 'Eksport'}
+                        variant="muted"
+                        height={38}
+                        radius={11}
+                        fontSize={12.5}
+                        icon={<DownloadIcon size={13} color={colors.textSecondary} />}
+                        style={styles.eventBtn}
+                        disabled={!!exportingId}
+                        onPress={() => confirmExport(e.olympiad_id)}
                       />
                     </View>
                   </Card>

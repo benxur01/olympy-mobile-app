@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Linking, Modal, Image, ActivityIndicator, TextInput, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -27,6 +27,7 @@ import {
   CameraIcon,
   ShareIcon,
   CoinIcon,
+  TelegramIcon,
 } from '../components/icons/Icons';
 import Badge from '../components/Badge';
 import SegmentedControl from '../components/SegmentedControl';
@@ -216,6 +217,51 @@ export default function ProfileScreen({ navigation }) {
   const olympiads = data?.olympiads || [];
   const isPremium = user?.is_premium || user?.is_premium_active;
   const twoFAEnabled = !!user?.totp_enabled;
+  const telegramLinked = !!user?.telegram_linked;
+  const [telegramLinking, setTelegramLinking] = useState(false);
+  const telegramPollRef = useRef(null);
+
+  // Telegram akkauntini ulash: deep link ochiladi (foydalanuvchi botga
+  // telefon raqamini yuboradi), so'ng har 5s (5 daqiqagacha) profil qayta
+  // yuklanib `telegram_linked` true bo'lishi kutiladi — RegisterScreen'dagi
+  // OTP oqimi bilan bir xil polling naqshi.
+  const linkTelegram = async () => {
+    if (telegramLinking || telegramLinked) return;
+    setTelegramLinking(true);
+    try {
+      const { data } = await authApi.startTelegramLink();
+      if (!data?.telegram_deep_link) {
+        Alert.alert('Xatolik', "Bot sozlanmagan. Keyinroq urinib ko'ring.");
+        setTelegramLinking(false);
+        return;
+      }
+      Linking.openURL(data.telegram_deep_link).catch(() => {});
+      if (telegramPollRef.current) clearInterval(telegramPollRef.current);
+      let tries = 0;
+      const MAX_TRIES = 60;
+      telegramPollRef.current = setInterval(async () => {
+        tries += 1;
+        try {
+          const fresh = await reloadMe();
+          if (fresh?.telegram_linked) {
+            clearInterval(telegramPollRef.current);
+            telegramPollRef.current = null;
+            setTelegramLinking(false);
+          }
+        } catch (e) {
+          // keyingi urinishda qayta tekshiriladi
+        }
+        if (tries >= MAX_TRIES) {
+          clearInterval(telegramPollRef.current);
+          telegramPollRef.current = null;
+          setTelegramLinking(false);
+        }
+      }, 5000);
+    } catch (e) {
+      Alert.alert('Xatolik', "Ulanishni boshlab bo'lmadi. Qayta urinib ko'ring.");
+      setTelegramLinking(false);
+    }
+  };
   const initial = (user?.full_name || 'O')[0].toUpperCase();
   // Backend `avatar_url` Cloudinary/S3 da absolyut, lokal storage'da nisbiy
   // (/media/..) bo'lishi mumkin — nisbiy bo'lsa API_BASE_URL bilan to'ldiramiz
@@ -506,6 +552,14 @@ export default function ProfileScreen({ navigation }) {
                 </Card>
               </TouchableOpacity>
             ) : null}
+            {isStudent ? (
+              <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('JoinCenter')}>
+                <Card style={styles.settingRow}>
+                  <Text style={styles.settingText}>Boshqa markazga qo'shilish</Text>
+                  <Text style={styles.settingArrow}>›</Text>
+                </Card>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('ChangePassword')}>
               <Card style={styles.settingRow}>
                 <Text style={styles.settingText}>Parolni o'zgartirish</Text>
@@ -520,6 +574,20 @@ export default function ProfileScreen({ navigation }) {
                     {twoFAEnabled ? 'Yoqilgan' : "O'chiq"}
                   </Text>
                   <Text style={styles.settingArrow}>›</Text>
+                </View>
+              </Card>
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.85} disabled={telegramLinked || telegramLinking} onPress={linkTelegram}>
+              <Card style={styles.settingRow}>
+                <View style={styles.settingLeft}>
+                  <TelegramIcon size={16} color={colors.blueLight} />
+                  <Text style={styles.settingText}>Telegram</Text>
+                </View>
+                <View style={styles.settingRight}>
+                  <Text style={[styles.twoFAStatus, telegramLinked ? styles.twoFAOn : styles.twoFAOff]}>
+                    {telegramLinked ? 'Ulangan' : telegramLinking ? 'Kutilmoqda…' : 'Ulanmagan'}
+                  </Text>
+                  {!telegramLinked ? <Text style={styles.settingArrow}>›</Text> : null}
                 </View>
               </Card>
             </TouchableOpacity>
@@ -787,6 +855,11 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  settingLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
   },
   twoFAStatus: {
     fontSize: 11.5,

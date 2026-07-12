@@ -67,8 +67,11 @@ export default function ApplicationsScreen() {
   const decide = (membership, decision) => {
     if (!centerId || busyId) return;
     setBusyId(membership.membership_id);
-    managerApi
-      .approveStudent(centerId, { membership_id: membership.membership_id, decision })
+    const approve =
+      membership.role === 'teacher' ? managerApi.approveTeacher
+      : membership.role === 'manager' ? managerApi.approveManager
+      : managerApi.approveStudent;
+    approve(centerId, { membership_id: membership.membership_id, decision })
       .then(() => reload())
       .catch((e) => {
         const detail = e?.response?.data?.detail;
@@ -138,9 +141,16 @@ export default function ApplicationsScreen() {
                     background={AVATAR_COLORS[i % AVATAR_COLORS.length]}
                   />
                   <View style={styles.rowText}>
-                    <Text style={styles.name}>{nameOf(m.user)}</Text>
+                    <View style={styles.nameRow}>
+                      <Text style={styles.name}>{nameOf(m.user)}</Text>
+                      {m.role === 'teacher' ? (
+                        <Badge label="O'qituvchi" color={colors.purple} background={tints.purple16} style={styles.roleBadge} />
+                      ) : m.role === 'manager' ? (
+                        <Badge label="Menejer" color={colors.blue} background={tints.blue14} style={styles.roleBadge} />
+                      ) : null}
+                    </View>
                     <Text style={styles.sub}>
-                      {(m.user?.phone || '') + (m.created_at ? ` · ${formatWhen(m.created_at)}` : '')}
+                      {(m.user?.phone || '') + (m.subject ? ` · ${m.subject}` : '') + (m.created_at ? ` · ${formatWhen(m.created_at)}` : '')}
                     </Text>
                   </View>
                   <Badge label="Kutilmoqda" color={colors.orange} background={tints.orange14} />
@@ -259,6 +269,16 @@ const makeStyles = (colors, tints) => StyleSheet.create({
   },
   rowText: {
     flex: 1,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  roleBadge: {
+    paddingVertical: 2,
+    paddingHorizontal: 7,
+    borderRadius: 7,
   },
   name: {
     fontSize: 14,

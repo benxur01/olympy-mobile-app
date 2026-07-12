@@ -24,6 +24,50 @@ const makeAVATAR_COLORS = (colors, tints) => ([colors.purple, colors.blueDeep, c
 const initialOf = (name) => (name || '?').trim()[0]?.toUpperCase() || '?';
 const minutes = (sec) => (sec ? `${Math.round(sec / 60)} daq` : '');
 
+// Sinfdoshlar reytingi ro'yxati — asosiy reyting bilan bir xil satr uslubida
+// (o'rin badge, avatar, ism, o'rtacha ball, streak; o'zim uchun ko'k urg'u).
+function ClassmatesList({ fetch, styles, colors, AVATAR_COLORS }) {
+  const { data, loading, error, reload } = fetch;
+  if (loading && !data) return <LoadingState message="Sinfdoshlar yuklanmoqda…" />;
+  if (error && !data) return <ErrorState onRetry={reload} />;
+  const rows = Array.isArray(data) ? data : [];
+  if (rows.length === 0) {
+    return (
+      <View style={styles.emptyWrap}>
+        <Text style={styles.emptyText}>Sinfdoshlar reytingi hozircha bo'sh</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={[styles.list, { borderTopWidth: 0, paddingTop: 0, marginTop: 20 }]}>
+      {rows.map((entry, i) => {
+        const me = entry.is_me;
+        return (
+          <View key={entry.user_id ?? i} style={[styles.row, me ? styles.meRow : null]}>
+            <Text style={[styles.rank, me ? { color: colors.blueLight } : null]}>{entry.rank}</Text>
+            <Avatar
+              letter={initialOf(entry.full_name)}
+              size={36}
+              fontSize={14}
+              background={AVATAR_COLORS[i % AVATAR_COLORS.length]}
+            />
+            <View style={styles.rowText}>
+              <Text style={styles.rowName} numberOfLines={1}>
+                {entry.full_name}
+                {me ? <Text style={styles.meTag}> · Siz</Text> : null}
+              </Text>
+              <Text style={styles.rowSub} numberOfLines={1}>
+                {entry.streak ? `🔥 ${entry.streak} kun streak` : "O'rtacha ball"}
+              </Text>
+            </View>
+            <Text style={[styles.rowScore, me ? { color: colors.text } : null]}>{entry.avg_score}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 export default function LeaderboardScreen() {
   const { colors, tints } = useTheme();
   const styles = makeStyles(colors, tints);
@@ -40,8 +84,15 @@ export default function LeaderboardScreen() {
     [period]
   );
 
-  if (loading && !data) return <LoadingState message="Reyting yuklanmoqda…" />;
-  if (error && !data) return <ErrorState onRetry={reload} />;
+  // Sinfdoshlar reytingi — davr/scope filtrlaridan mustaqil, alohida yuklanadi
+  // (faqat "Sinfdoshlar" tabida ko'rsatiladi, lekin oldindan olish ham arzon).
+  const classmatesFetch = useFetch(
+    () => studentApi.classmatesLeaderboard().then((r) => (Array.isArray(r.data) ? r.data : [])),
+    []
+  );
+
+  if (loading && !data && scope !== 2) return <LoadingState message="Reyting yuklanmoqda…" />;
+  if (error && !data && scope !== 2) return <ErrorState onRetry={reload} />;
 
   const allEntries = data?.entries || (Array.isArray(data) ? data : []);
   const myCenter = user?.center_name;
@@ -58,17 +109,21 @@ export default function LeaderboardScreen() {
         <Text style={styles.title}>Reyting</Text>
 
         <SegmentedControl
-          segments={['Umumiy', 'Markazim']}
+          segments={['Umumiy', 'Markazim', 'Sinfdoshlar']}
           activeIndex={scope}
           onChange={setScope}
           style={styles.scopeControl}
         />
-        <View style={styles.periodRow}>
-          <Chip label="Barcha vaqt" active={period === 0} onPress={() => setPeriod(0)} />
-          <Chip label="Bu hafta" active={period === 1} onPress={() => setPeriod(1)} />
-        </View>
+        {scope !== 2 ? (
+          <View style={styles.periodRow}>
+            <Chip label="Barcha vaqt" active={period === 0} onPress={() => setPeriod(0)} />
+            <Chip label="Bu hafta" active={period === 1} onPress={() => setPeriod(1)} />
+          </View>
+        ) : null}
 
-        {entries.length === 0 ? (
+        {scope === 2 ? (
+          <ClassmatesList fetch={classmatesFetch} styles={styles} colors={colors} AVATAR_COLORS={AVATAR_COLORS} />
+        ) : entries.length === 0 ? (
           <View style={styles.emptyWrap}>
             <Text style={styles.emptyText}>
               {scope === 1 && !myCenter
