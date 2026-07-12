@@ -177,6 +177,8 @@ export default function ProfileScreen({ navigation }) {
   const [certImage, setCertImage] = useState(null);
   const [certLoading, setCertLoading] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [telegramLinking, setTelegramLinking] = useState(false);
+  const telegramPollRef = useRef(null);
 
   const { data, loading, error, reload, refresh } = useFetch(async () => {
     // Boshqa rollar uchun student endpoint'lari 403 qaytaradi — ularni
@@ -218,8 +220,6 @@ export default function ProfileScreen({ navigation }) {
   const isPremium = user?.is_premium || user?.is_premium_active;
   const twoFAEnabled = !!user?.totp_enabled;
   const telegramLinked = !!user?.telegram_linked;
-  const [telegramLinking, setTelegramLinking] = useState(false);
-  const telegramPollRef = useRef(null);
 
   // Telegram akkauntini ulash: deep link ochiladi (foydalanuvchi botga
   // telefon raqamini yuboradi), so'ng har 5s (5 daqiqagacha) profil qayta
