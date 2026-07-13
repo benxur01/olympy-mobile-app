@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated, Platform } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FONTS } from '../constants/typography';
 import { useTheme } from '../services/ThemeContext';
@@ -73,46 +74,48 @@ export default function TabBar({ items, activeKey, onPress, style }) {
         style,
       ]}
     >
-      <View style={styles.card}>
-        {/* Siljib yuruvchi active-indicator (pill) */}
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.indicator,
-            {
-              width: indicatorW,
-              opacity: ready ? 1 : 0,
-              transform: [{ translateX }],
-            },
-          ]}
-        />
+      <View style={styles.cardShadow}>
+        <BlurView intensity={70} tint={isDark ? 'dark' : 'light'} style={styles.card}>
+          {/* Siljib yuruvchi active-indicator (pill) */}
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.indicator,
+              {
+                width: indicatorW,
+                opacity: ready ? 1 : 0,
+                transform: [{ translateX }],
+              },
+            ]}
+          />
 
-        {items.map((item, index) => {
-          const active = index === activeIndex;
-          const color = active ? colors.blue : colors.textMuted;
-          return (
-            <TouchableOpacity
-              key={item.key}
-              activeOpacity={0.7}
-              onPress={() => onPress && onPress(item.key)}
-              onLayout={handleItemLayout(index)}
-              style={styles.item}
-            >
-              <View style={styles.iconBox}>
-                {item.icon(color)}
-                {item.dot ? <View style={styles.dot} /> : null}
-              </View>
-              <Text
-                style={[
-                  styles.label,
-                  { color, fontFamily: active ? FONTS.extrabold : FONTS.bold },
-                ]}
+          {items.map((item, index) => {
+            const active = index === activeIndex;
+            const color = active ? colors.blue : colors.textMuted;
+            return (
+              <TouchableOpacity
+                key={item.key}
+                activeOpacity={0.7}
+                onPress={() => onPress && onPress(item.key)}
+                onLayout={handleItemLayout(index)}
+                style={styles.item}
               >
-                {item.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+                <View style={styles.iconBox}>
+                  {item.icon(color, active)}
+                  {item.dot ? <View style={styles.dot} /> : null}
+                </View>
+                <Text
+                  style={[
+                    styles.label,
+                    { color, fontFamily: active ? FONTS.extrabold : FONTS.bold },
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </BlurView>
       </View>
     </View>
   );
@@ -127,22 +130,30 @@ const makeStyles = (colors, isDark) =>
       paddingHorizontal: 16,
       paddingTop: 6,
     },
-    // "Suzuvchi" karta — yumaloq burchak + soya.
+    // Soya alohida qatlamda — chunki BlurView'dagi overflow:'hidden' bilan
+    // bitta stilda bo'lsa, Android soyani ham kesib tashlaydi.
+    cardShadow: {
+      borderRadius: 26,
+      shadowColor: colors.shadow,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: isDark ? 0.4 : 0.14,
+      shadowRadius: 20,
+      elevation: 12,
+    },
+    // "Suzuvchi" karta — yumaloq burchak, shaffof BlurView foni (Telegram
+    // uslubidagi "muzlatilgan shisha"); ustiga o'qish uchun yengil tint
+    // qo'yilgan, chunki sof blur turli fonlarda kontrastni pasaytiradi.
     card: {
       flexDirection: 'row',
       alignItems: 'flex-start',
-      backgroundColor: colors.navBg,
+      backgroundColor: isDark ? 'rgba(15,24,48,0.55)' : 'rgba(255,255,255,0.55)',
+      overflow: 'hidden',
       borderRadius: 26,
       paddingTop: 10,
       paddingBottom: 8,
       paddingHorizontal: 6,
       borderWidth: 1,
       borderColor: colors.border,
-      shadowColor: colors.shadow,
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: isDark ? 0.4 : 0.14,
-      shadowRadius: 20,
-      elevation: 12,
     },
     item: {
       flex: 1,

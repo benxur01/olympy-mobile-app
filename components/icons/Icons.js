@@ -22,23 +22,29 @@ export const BellIcon = ({ size = 18, color = COLORS.textSecondary, strokeWidth 
   </Svg>
 );
 
-export const HomeIcon = ({ size = 23, color = COLORS.textMuted }) => (
+export const HomeIcon = ({ size = 23, color = COLORS.textMuted, filled = false }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24">
-    <Path d="M4 11 12 4l8 7v8h-5.5v-5h-5v5H4z" stroke={color} strokeWidth={2} fill="none" strokeLinejoin="round" />
+    <Path
+      d="M4 11 12 4l8 7v8h-5.5v-5h-5v5H4z"
+      stroke={filled ? 'none' : color}
+      fill={filled ? color : 'none'}
+      strokeWidth={2}
+      strokeLinejoin="round"
+    />
   </Svg>
 );
 
-export const CalendarIcon = ({ size = 23, color = COLORS.textMuted, strokeWidth = 2 }) => (
+export const CalendarIcon = ({ size = 23, color = COLORS.textMuted, strokeWidth = 2, filled = false }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24">
-    <Rect x="3" y="5" width="18" height="16" rx="3" stroke={color} strokeWidth={strokeWidth} fill="none" />
+    <Rect x="3" y="5" width="18" height="16" rx="3" stroke={color} strokeWidth={strokeWidth} fill={filled ? color : 'none'} fillOpacity={filled ? 0.18 : 1} />
     <Path d="M3 10h18M8 3v4M16 3v4" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
   </Svg>
 );
 
-export const TargetIcon = ({ size = 23, color = COLORS.textMuted }) => (
+export const TargetIcon = ({ size = 23, color = COLORS.textMuted, filled = false }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24">
     <Circle cx="12" cy="12" r="8.5" stroke={color} strokeWidth={2} fill="none" />
-    <Circle cx="12" cy="12" r="3.2" stroke={color} strokeWidth={2} fill="none" />
+    <Circle cx="12" cy="12" r="3.2" stroke={color} strokeWidth={2} fill={filled ? color : 'none'} />
   </Svg>
 );
 
@@ -50,18 +56,26 @@ export const BarsIcon = ({ size = 23, color = COLORS.textMuted }) => (
   </Svg>
 );
 
-export const UserIcon = ({ size = 23, color = COLORS.textMuted }) => (
+export const UserIcon = ({ size = 23, color = COLORS.textMuted, filled = false }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24">
-    <Circle cx="12" cy="8" r="4" stroke={color} strokeWidth={2} fill="none" />
-    <Path d="M4.5 20c.7-3.4 4-5 7.5-5s6.8 1.6 7.5 5" stroke={color} strokeWidth={2} fill="none" strokeLinecap="round" />
+    <Circle cx="12" cy="8" r="4" stroke={filled ? 'none' : color} fill={filled ? color : 'none'} strokeWidth={2} />
+    {filled ? (
+      <Path d="M4.5 20c.7-3.4 4-5 7.5-5s6.8 1.6 7.5 5v1H4.5v-1z" fill={color} />
+    ) : (
+      <Path d="M4.5 20c.7-3.4 4-5 7.5-5s6.8 1.6 7.5 5" stroke={color} strokeWidth={2} fill="none" strokeLinecap="round" />
+    )}
   </Svg>
 );
 
-export const UsersIcon = ({ size = 23, color = COLORS.textMuted }) => (
+export const UsersIcon = ({ size = 23, color = COLORS.textMuted, filled = false }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24">
-    <Circle cx="9" cy="8" r="3.4" stroke={color} strokeWidth={2} fill="none" />
-    <Circle cx="16.5" cy="9.5" r="2.6" stroke={color} strokeWidth={2} fill="none" />
-    <Path d="M3.5 19c.6-3 3-4.5 5.5-4.5s4.9 1.5 5.5 4.5M15 14.8c2 .2 4 1.4 4.5 3.7" stroke={color} strokeWidth={2} fill="none" strokeLinecap="round" />
+    <Circle cx="9" cy="8" r="3.4" stroke={filled ? 'none' : color} fill={filled ? color : 'none'} strokeWidth={2} />
+    <Circle cx="16.5" cy="9.5" r="2.6" stroke={filled ? 'none' : color} fill={filled ? color : 'none'} strokeWidth={2} />
+    {filled ? (
+      <Path d="M3.5 19c.6-3 3-4.5 5.5-4.5s4.9 1.5 5.5 4.5v.5h-11v-.5zM15 14.8c2 .2 4 1.4 4.5 3.7v.5h-3.2c.1-1.6-.3-3-1.3-4.2z" fill={color} />
+    ) : (
+      <Path d="M3.5 19c.6-3 3-4.5 5.5-4.5s4.9 1.5 5.5 4.5M15 14.8c2 .2 4 1.4 4.5 3.7" stroke={color} strokeWidth={2} fill="none" strokeLinecap="round" />
+    )}
   </Svg>
 );
 
@@ -72,16 +86,30 @@ export const SettingsIcon = ({ size = 23, color = COLORS.textMuted }) => (
   </Svg>
 );
 
-export const InboxIcon = ({ size = 23, color = COLORS.textMuted }) => (
+export const InboxIcon = ({ size = 23, color = COLORS.textMuted, filled = false }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24">
-    <Path d="M4 5h16v14H4V5zm0 4h16M9 13h6" stroke={color} strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    {filled ? (
+      <>
+        <Rect x="4" y="5" width="16" height="14" rx="2" fill={color} />
+        <Rect x="9" y="12" width="6" height="1.6" rx="0.8" fill={COLORS.white} fillOpacity={0.55} />
+      </>
+    ) : (
+      <Path d="M4 5h16v14H4V5zm0 4h16M9 13h6" stroke={color} strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    )}
   </Svg>
 );
 
-export const QuestionCircleIcon = ({ size = 23, color = COLORS.textMuted, r = 8.5, strokeWidth = 2 }) => (
+export const QuestionCircleIcon = ({ size = 23, color = COLORS.textMuted, r = 8.5, strokeWidth = 2, filled = false }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24">
-    <Circle cx="12" cy="12" r={r} stroke={color} strokeWidth={strokeWidth} fill="none" />
-    <Path d="M9.5 9.5a2.5 2.5 0 1 1 3.4 2.3c-.7.3-.9.8-.9 1.7M12 17v.3" stroke={color} strokeWidth={strokeWidth} fill="none" strokeLinecap="round" />
+    <Circle cx="12" cy="12" r={r} stroke={filled ? 'none' : color} fill={filled ? color : 'none'} strokeWidth={strokeWidth} />
+    <Path
+      d="M9.5 9.5a2.5 2.5 0 1 1 3.4 2.3c-.7.3-.9.8-.9 1.7M12 17v.3"
+      stroke={filled ? COLORS.white : color}
+      strokeOpacity={filled ? 0.9 : 1}
+      strokeWidth={strokeWidth}
+      fill="none"
+      strokeLinecap="round"
+    />
   </Svg>
 );
 
@@ -203,10 +231,15 @@ export const WarningIcon = ({ size = 16, color = COLORS.orange }) => (
   </Svg>
 );
 
-export const EyeIcon = ({ size = 20, color = COLORS.textMuted }) => (
+export const EyeIcon = ({ size = 20, color = COLORS.textMuted, filled = false }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24">
-    <Path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z" stroke={color} strokeWidth={1.8} fill="none" />
-    <Circle cx="12" cy="12" r="2.8" stroke={color} strokeWidth={1.8} fill="none" />
+    <Path
+      d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"
+      stroke={filled ? 'none' : color}
+      fill={filled ? color : 'none'}
+      strokeWidth={1.8}
+    />
+    <Circle cx="12" cy="12" r="2.8" fill={filled ? COLORS.white : 'none'} fillOpacity={filled ? 0.85 : 1} stroke={filled ? 'none' : color} strokeWidth={1.8} />
   </Svg>
 );
 

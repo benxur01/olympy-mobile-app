@@ -1,5 +1,5 @@
 import React from 'react';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import ManagerHomeScreen from '../screens/ManagerHomeScreen';
 import ApplicationsScreen from '../screens/ApplicationsScreen';
 import ManagerStudentsScreen from '../screens/ManagerStudentsScreen';
@@ -8,7 +8,7 @@ import ProctoringScreen from '../screens/ProctoringScreen';
 import NavigationTabBar from './NavigationTabBar';
 import { MANAGER_TABS } from './tabConfig';
 
-const Tab = createBottomTabNavigator();
+const Tab = createMaterialTopTabNavigator();
 
 // Menejer paneli. O'qituvchi tab'laridan farqi — Asosiy'da markaz statistikasi,
 // alohida o'quvchi boshqaruvi va natijalar/analitika ekranlari bor. Arizalar va
@@ -16,7 +16,8 @@ const Tab = createBottomTabNavigator();
 export default function ManagerTabs() {
   return (
     <Tab.Navigator
-      screenOptions={{ headerShown: false }}
+      tabBarPosition="bottom"
+      screenOptions={{ swipeEnabled: true, animationEnabled: true, lazy: true }}
       tabBar={(props) => <NavigationTabBar {...props} items={MANAGER_TABS} />}
     >
       <Tab.Screen name="MAsosiy" component={ManagerHomeScreen} />

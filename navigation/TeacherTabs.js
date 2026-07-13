@@ -1,5 +1,5 @@
 import React from 'react';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import TeacherHomeScreen from '../screens/TeacherHomeScreen';
 import ApplicationsScreen from '../screens/ApplicationsScreen';
 import ManagerStudentsScreen from '../screens/ManagerStudentsScreen';
@@ -8,12 +8,13 @@ import EssayGradingScreen from '../screens/EssayGradingScreen';
 import NavigationTabBar from './NavigationTabBar';
 import { TEACHER_TABS } from './tabConfig';
 
-const Tab = createBottomTabNavigator();
+const Tab = createMaterialTopTabNavigator();
 
 export default function TeacherTabs() {
   return (
     <Tab.Navigator
-      screenOptions={{ headerShown: false }}
+      tabBarPosition="bottom"
+      screenOptions={{ swipeEnabled: true, animationEnabled: true, lazy: true }}
       tabBar={(props) => <NavigationTabBar {...props} items={TEACHER_TABS} />}
     >
       <Tab.Screen name="TAsosiy" component={TeacherHomeScreen} />

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../services/ThemeContext';
 import { FONTS } from '../constants/typography';
@@ -30,26 +30,37 @@ export default function SplashScreen({ navigation }) {
           Olimpiadalar, reyting va sertifikatlar — bitta platformada.
         </Text>
       </View>
-      <View style={styles.actions}>
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => navigation.navigate('Login')}
-          style={styles.primaryBtn}
-        >
-          <Text style={styles.primaryBtnText}>Kirish</Text>
-        </TouchableOpacity>
-        <Button
-          title="Ro'yxatdan o'tish"
-          variant="dark"
-          height={54}
-          radius={14}
-          fontSize={16}
-          onPress={() => navigation.navigate('Register')}
-        />
-        <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('CertVerify')}>
-          <Text style={styles.certLink}>Sertifikatni tekshirish →</Text>
-        </TouchableOpacity>
-      </View>
+      {initializing || user ? (
+        // Sessiya tekshirilayotgan (yoki allaqachon login qilingan, hozir
+        // rolga yo'naltirilayotgan) paytda "Kirish/Ro'yxatdan o'tish"
+        // tugmalarini ko'rsatmaymiz — aks holda har safar ilova ochilganda
+        // allaqachon login qilingan foydalanuvchiga ham lip qilib shu
+        // "birinchi marta kirish" ekrani ko'rinib ketardi.
+        <View style={[styles.actions, styles.loadingBox]}>
+          <ActivityIndicator color={colors.blue} />
+        </View>
+      ) : (
+        <View style={styles.actions}>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('Login')}
+            style={styles.primaryBtn}
+          >
+            <Text style={styles.primaryBtnText}>Kirish</Text>
+          </TouchableOpacity>
+          <Button
+            title="Ro'yxatdan o'tish"
+            variant="dark"
+            height={54}
+            radius={14}
+            fontSize={16}
+            onPress={() => navigation.navigate('Register')}
+          />
+          <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('CertVerify')}>
+            <Text style={styles.certLink}>Sertifikatni tekshirish →</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -99,6 +110,11 @@ const makeStyles = (colors, tints) => StyleSheet.create({
   },
   actions: {
     gap: 10,
+  },
+  loadingBox: {
+    alignItems: 'center',
+    height: 54,
+    justifyContent: 'center',
   },
   primaryBtn: {
     height: 54,

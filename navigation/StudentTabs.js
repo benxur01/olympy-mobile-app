@@ -1,5 +1,5 @@
 import React from 'react';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import StudentHomeScreen from '../screens/StudentHomeScreen';
 import EventsScreen from '../screens/EventsScreen';
 import PracticeScreen from '../screens/PracticeScreen';
@@ -8,12 +8,13 @@ import ProfileScreen from '../screens/ProfileScreen';
 import NavigationTabBar from './NavigationTabBar';
 import { STUDENT_TABS } from './tabConfig';
 
-const Tab = createBottomTabNavigator();
+const Tab = createMaterialTopTabNavigator();
 
 export default function StudentTabs() {
   return (
     <Tab.Navigator
-      screenOptions={{ headerShown: false }}
+      tabBarPosition="bottom"
+      screenOptions={{ swipeEnabled: true, animationEnabled: true, lazy: true }}
       tabBar={(props) => <NavigationTabBar {...props} items={STUDENT_TABS} />}
     >
       <Tab.Screen name="Asosiy" component={StudentHomeScreen} />
