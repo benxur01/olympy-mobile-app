@@ -51,9 +51,11 @@ const toBars = (rows, colors, color) => {
   }));
 };
 
-export default function AdminAnalyticsScreen({ navigation }) {
+export default function AdminAnalyticsScreen({ navigation, embedded = false }) {
   const { colors, tints } = useTheme();
   const styles = makeStyles(colors, tints);
+  const Wrapper = embedded ? View : SafeAreaView;
+  const wrapperProps = embedded ? {} : { edges: ['top'] };
 
   const { data, loading, refreshing, error, reload, refresh } = useFetch(async () => {
     const [metrics, revenue, attempts, olympiads, questions, centers] = await Promise.allSettled([
@@ -139,16 +141,18 @@ export default function AdminAnalyticsScreen({ navigation }) {
   );
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
-      <View style={styles.topBar}>
-        <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <BackIcon size={20} color={colors.text} />
-        </TouchableOpacity>
-        <View style={styles.headerText}>
-          <Text style={styles.title}>Platforma analitikasi</Text>
-          <Text style={styles.subtitle}>Daromad, faollik va kontent statistikasi</Text>
+    <Wrapper style={styles.screen} {...wrapperProps}>
+      {embedded ? null : (
+        <View style={styles.topBar}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <BackIcon size={20} color={colors.text} />
+          </TouchableOpacity>
+          <View style={styles.headerText}>
+            <Text style={styles.title}>Platforma analitikasi</Text>
+            <Text style={styles.subtitle}>Daromad, faollik va kontent statistikasi</Text>
+          </View>
         </View>
-      </View>
+      )}
 
       <ScrollView
         contentContainerStyle={styles.content}
@@ -342,7 +346,7 @@ export default function AdminAnalyticsScreen({ navigation }) {
 
         <View style={{ height: 20 }} />
       </ScrollView>
-    </SafeAreaView>
+    </Wrapper>
   );
 }
 

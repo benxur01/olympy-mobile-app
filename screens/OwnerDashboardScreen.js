@@ -24,6 +24,7 @@ import TabBar from '../components/TabBar';
 import ActivityBarChart from '../components/ActivityBarChart';
 import LoadingState from '../components/LoadingState';
 import ErrorState from '../components/ErrorState';
+import EmptyState from '../components/EmptyState';
 import useFetch from '../services/useFetch';
 import { ownerApi, managerApi, authApi, billingApi, downloadOlympiadResults } from '../services/api';
 import { PRIVACY_POLICY_URL } from '../services/config';
@@ -33,8 +34,10 @@ import { UZBEKISTAN_REGIONS, UZBEKISTAN_DISTRICTS } from '../constants/uzbekista
 import ApplicationsScreen from './ApplicationsScreen';
 import ProctoringScreen from './ProctoringScreen';
 import ManagerStudentsScreen from './ManagerStudentsScreen';
+import OwnerPremiumScreen from './OwnerPremiumScreen';
+import OwnerShopScreen from './OwnerShopScreen';
 import ProgressBar from '../components/ProgressBar';
-import { PlusIcon, HomeIcon, UsersIcon, BarsIcon, SettingsIcon, ChevronRightIcon, CrownIcon, InboxIcon, EyeIcon, EditIcon, ShirtIcon, DownloadIcon, TrophyIcon, WarningIcon } from '../components/icons/Icons';
+import { PlusIcon, HomeIcon, UsersIcon, BarsIcon, SettingsIcon, ChevronRightIcon, CrownIcon, InboxIcon, EyeIcon, EditIcon, ShirtIcon, DownloadIcon, TrophyIcon, WarningIcon, BuildingIcon } from '../components/icons/Icons';
 
 // Brend rangi uchun tayyor palitra (websaytdagi urg'u ranglariga mos). To'liq
 // rang g'ildiragi o'rniga tanlanadigan namunalar — sodda va yetarli.
@@ -112,6 +115,10 @@ export default function OwnerDashboardScreen({ navigation }) {
   const [saving, setSaving] = useState(false);
   // Hisobot endi alohida tab emas — Panel'dan ochiladigan modal.
   const [reportOpen, setReportOpen] = useState(false);
+  // Premium tahlil va Do'kon boshqaruvini alohida ekranga o'tmasdan, shu
+  // yerning o'zida (to'liq ekranli modal orqali) ochish uchun.
+  const [premiumOpen, setPremiumOpen] = useState(false);
+  const [shopOpen, setShopOpen] = useState(false);
   const [report, setReport] = useState(null);
   const [reportLoading, setReportLoading] = useState(false);
   // Hisobot modalida natijalar eksporti uchun olimpiadalar ro'yxati.
@@ -174,15 +181,36 @@ export default function OwnerDashboardScreen({ navigation }) {
       .catch(() => setOlympiads([]));
   }, [reportOpen, olympiads]);
 
+  const confirmLogout = () => {
+    Alert.alert('Chiqish', 'Hisobdan chiqmoqchimisiz?', [
+      { text: 'Bekor qilish', style: 'cancel' },
+      {
+        text: 'Chiqish',
+        style: 'destructive',
+        onPress: async () => {
+          await logout();
+          navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
+        },
+      },
+    ]);
+  };
+
   if (loading) return <LoadingState message="Panel yuklanmoqda…" />;
   if (error && !data) return <ErrorState onRetry={reload} />;
 
   if (!center) {
     return (
       <SafeAreaView style={styles.screen} edges={['top']}>
-        <View style={styles.emptyWrap}>
-          <Text style={styles.emptyText}>Sizga biriktirilgan markaz topilmadi</Text>
-        </View>
+        <EmptyState
+          icon={<BuildingIcon size={24} color={colors.blueLight} />}
+          title="Sizga biriktirilgan markaz topilmadi"
+          message="Hisobingizga hali biror o'quv markazi bog'lanmagan. Internet aloqasini tekshirib qayta urinib ko'ring, muammo davom etsa administratsiyaga murojaat qiling."
+          actionLabel="Qayta urinish"
+          onAction={reload}
+        />
+        <TouchableOpacity activeOpacity={0.7} style={styles.emptyLogout} onPress={confirmLogout}>
+          <Text style={styles.emptyLogoutText}>Hisobdan chiqish</Text>
+        </TouchableOpacity>
       </SafeAreaView>
     );
   }
@@ -241,20 +269,6 @@ export default function OwnerDashboardScreen({ navigation }) {
           } catch (e) {
             Alert.alert('Xatolik', e?.response?.data?.detail || "Chiqarib bo'lmadi.");
           }
-        },
-      },
-    ]);
-  };
-
-  const confirmLogout = () => {
-    Alert.alert('Chiqish', 'Hisobdan chiqmoqchimisiz?', [
-      { text: 'Bekor qilish', style: 'cancel' },
-      {
-        text: 'Chiqish',
-        style: 'destructive',
-        onPress: async () => {
-          await logout();
-          navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
         },
       },
     ]);
@@ -675,6 +689,30 @@ export default function OwnerDashboardScreen({ navigation }) {
                 <ChevronRightIcon size={15} color={colors.textMuted} />
               </Card>
             </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.85} onPress={() => setPremiumOpen(true)}>
+              <Card style={styles.reportEntry} borderColor={tints.goldBorder30} background={tints.gold06}>
+                <View style={[styles.reportEntryIcon, { backgroundColor: tints.gold10 }]}>
+                  <CrownIcon size={19} color={colors.gold} />
+                </View>
+                <View style={styles.reportEntryText}>
+                  <Text style={styles.reportEntryTitle}>Premium tahlil</Text>
+                  <Text style={styles.reportEntrySub}>Reyting tarixi, xavf tahlili, mock testlar, savollar banki</Text>
+                </View>
+                <ChevronRightIcon size={15} color={colors.gold} />
+              </Card>
+            </TouchableOpacity>
+            <TouchableOpacity activeOpacity={0.85} onPress={() => setShopOpen(true)}>
+              <Card style={styles.reportEntry}>
+                <View style={[styles.reportEntryIcon, { backgroundColor: tints.blue14 }]}>
+                  <ShirtIcon size={19} color={colors.blueLight} />
+                </View>
+                <View style={styles.reportEntryText}>
+                  <Text style={styles.reportEntryTitle}>Do'kon boshqaruvi</Text>
+                  <Text style={styles.reportEntrySub}>Mahsulotlar, narx va zaxira</Text>
+                </View>
+                <ChevronRightIcon size={15} color={colors.textMuted} />
+              </Card>
+            </TouchableOpacity>
             <View style={styles.sectionRow}>
               <Text style={styles.sectionTitle}>Jamoa</Text>
               <TouchableOpacity activeOpacity={0.7} onPress={() => setTab('Jamoa')}>
@@ -825,6 +863,30 @@ export default function OwnerDashboardScreen({ navigation }) {
               </View>
             )}
             </ScrollView>
+          </SafeAreaView>
+        </Modal>
+
+        <Modal visible={premiumOpen} animationType="slide" onRequestClose={() => setPremiumOpen(false)}>
+          <SafeAreaView style={styles.screen} edges={['top']}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Premium tahlil</Text>
+              <TouchableOpacity activeOpacity={0.7} onPress={() => setPremiumOpen(false)}>
+                <Text style={styles.modalClose}>Yopish</Text>
+              </TouchableOpacity>
+            </View>
+            <OwnerPremiumScreen route={{ params: { centerId: center.id, centerName: stats.name || center.name } }} embedded />
+          </SafeAreaView>
+        </Modal>
+
+        <Modal visible={shopOpen} animationType="slide" onRequestClose={() => setShopOpen(false)}>
+          <SafeAreaView style={styles.screen} edges={['top']}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Do'kon boshqaruvi</Text>
+              <TouchableOpacity activeOpacity={0.7} onPress={() => setShopOpen(false)}>
+                <Text style={styles.modalClose}>Yopish</Text>
+              </TouchableOpacity>
+            </View>
+            <OwnerShopScreen route={{ params: { centerId: center.id } }} embedded />
           </SafeAreaView>
         </Modal>
 
@@ -1148,8 +1210,8 @@ export default function OwnerDashboardScreen({ navigation }) {
 const makeStyles = (colors, tints) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { paddingTop: 18, paddingHorizontal: 20, paddingBottom: 100 },
-  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  emptyText: { fontSize: 13, fontFamily: FONTS.semibold, color: colors.textMuted },
+  emptyLogout: { alignSelf: 'center', marginBottom: 28, paddingVertical: 10, paddingHorizontal: 16 },
+  emptyLogoutText: { fontSize: 13, fontFamily: FONTS.extrabold, color: colors.red },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   headerText: { flex: 1 },
   title: { fontSize: 19, fontFamily: FONTS.extrabold, color: colors.text },

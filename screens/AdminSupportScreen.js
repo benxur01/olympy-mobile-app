@@ -36,9 +36,11 @@ const timeOf = (iso) => {
 const roleLabel = (role) =>
   role === 'user' ? 'Foydalanuvchi' : role === 'admin' ? 'Siz (Admin)' : 'AI Yordamchi';
 
-export default function AdminSupportScreen({ navigation }) {
+export default function AdminSupportScreen({ navigation, embedded = false }) {
   const { colors, tints } = useTheme();
   const styles = makeStyles(colors, tints);
+  const Wrapper = embedded ? View : SafeAreaView;
+  const wrapperProps = embedded ? {} : { edges: ['top'] };
 
   const { data, loading, refreshing, error, reload, refresh } = useFetch(async () => {
     const { data: res } = await adminApi.getSupportChats();
@@ -109,11 +111,13 @@ export default function AdminSupportScreen({ navigation }) {
   const threads = data || [];
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
+    <Wrapper style={styles.screen} {...wrapperProps}>
       <View style={styles.topBar}>
-        <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={styles.iconBtn}>
-          <BackIcon size={20} color={colors.text} />
-        </TouchableOpacity>
+        {embedded ? null : (
+          <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={styles.iconBtn}>
+            <BackIcon size={20} color={colors.text} />
+          </TouchableOpacity>
+        )}
         <View style={styles.headerText}>
           <Text style={styles.title}>AI Support yozishmalari</Text>
           <Text style={styles.subtitle}>{threads.length} ta murojaat</Text>
@@ -264,7 +268,7 @@ export default function AdminSupportScreen({ navigation }) {
           </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
-    </SafeAreaView>
+    </Wrapper>
   );
 }
 

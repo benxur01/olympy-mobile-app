@@ -9,6 +9,7 @@ import Button from '../components/Button';
 import Avatar from '../components/Avatar';
 import IconBox from '../components/IconBox';
 import SearchBar from '../components/SearchBar';
+import SegmentedControl from '../components/SegmentedControl';
 import LoadingState from '../components/LoadingState';
 import ErrorState from '../components/ErrorState';
 import useFetch from '../services/useFetch';
@@ -16,9 +17,6 @@ import { adminApi } from '../services/api';
 import {
   BuildingIcon,
   DotsIcon,
-  BarsIcon,
-  SparkleIcon,
-  BookIcon,
   ChevronRightIcon,
   CrownIcon,
   UsersIcon,
@@ -28,6 +26,11 @@ import {
   UserIcon,
 } from '../components/icons/Icons';
 import { useAuth } from '../services/AuthContext';
+import AdminAnalyticsScreen from './AdminAnalyticsScreen';
+import AdminSupportScreen from './AdminSupportScreen';
+import AdminSubjectsScreen from './AdminSubjectsScreen';
+
+const ADMIN_TABS = ['Umumiy', 'Analitika', 'Support', 'Fanlar'];
 
 const roleLabels = (roles = []) =>
   roles
@@ -97,6 +100,7 @@ export default function AdminScreen({ navigation }) {
     };
   }, []);
 
+  const [tab, setTab] = useState(0);
   const [userQuery, setUserQuery] = useState('');
   const [searchedUsers, setSearchedUsers] = useState(null);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -214,7 +218,7 @@ export default function AdminScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <View style={styles.topSection}>
         <View style={styles.header}>
           <View style={styles.headerText}>
             <Text style={styles.title}>Platforma</Text>
@@ -248,164 +252,131 @@ export default function AdminScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.statsRow}>
-          <Card style={styles.statCard}>
-            <Text style={styles.statValue}>{allCenters.length}</Text>
-            <Text style={styles.statLabel}>Markazlar</Text>
-          </Card>
-          <Card style={styles.statCard}>
-            <Text style={styles.statValue}>{usersCount}</Text>
-            <Text style={styles.statLabel}>Foydalanuvchilar</Text>
-          </Card>
-          <Card style={styles.statCard}>
-            <Text style={[styles.statValue, { color: colors.orange }]}>{pending.length}</Text>
-            <Text style={styles.statLabel}>Kutilmoqda</Text>
-          </Card>
-        </View>
+        <SegmentedControl segments={ADMIN_TABS} activeIndex={tab} onChange={setTab} style={styles.tabsControl} />
+      </View>
 
-        <View style={styles.navRow}>
-          <TouchableOpacity
-            style={styles.navCardTouch}
-            activeOpacity={0.85}
-            onPress={() => navigation.navigate('AdminAnalytics')}
-          >
-            <Card style={styles.navCard}>
-              <IconBox size={40} radius={12} background={tints.blue14}>
-                <BarsIcon size={19} color={colors.blue} />
-              </IconBox>
-              <Text style={styles.navTitle}>Analitika</Text>
-              <Text style={styles.navSub}>Grafik va statistika</Text>
+      {tab === 0 ? (
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <View style={styles.statsRow}>
+            <Card style={styles.statCard}>
+              <Text style={styles.statValue}>{allCenters.length}</Text>
+              <Text style={styles.statLabel}>Markazlar</Text>
             </Card>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.navCardTouch}
-            activeOpacity={0.85}
-            onPress={() => navigation.navigate('AdminSupport')}
-          >
-            <Card style={styles.navCard}>
-              <IconBox size={40} radius={12} background={tints.purple16}>
-                <SparkleIcon size={19} color={colors.purple} />
-              </IconBox>
-              <Text style={styles.navTitle}>Support chatlar</Text>
-              <Text style={styles.navSub}>AI yozishmalar · javob</Text>
+            <Card style={styles.statCard}>
+              <Text style={styles.statValue}>{usersCount}</Text>
+              <Text style={styles.statLabel}>Foydalanuvchilar</Text>
             </Card>
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity
-          activeOpacity={0.85}
-          style={styles.subjectsRowTouch}
-          onPress={() => navigation.navigate('AdminSubjects')}
-        >
-          <Card style={styles.subjectsRow}>
-            <IconBox size={36} radius={10} background={tints.green14}>
-              <BookIcon size={17} color={colors.green} />
-            </IconBox>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.navTitle}>Fanlar</Text>
-              <Text style={styles.navSub}>Platforma fan kategoriyalari</Text>
-            </View>
-            <ChevronRightIcon size={16} color={colors.textMuted} />
-          </Card>
-        </TouchableOpacity>
-
-        <Text style={styles.sectionTitle}>Yangi markaz arizalari</Text>
-        {pending.length === 0 ? (
-          <Card style={styles.emptyCard}>
-            <Text style={styles.emptyText}>Kutilayotgan ariza yo'q</Text>
-          </Card>
-        ) : (
-          pending.map((c) => (
-            <Card key={c.id} style={styles.requestCard}>
-              <View style={styles.requestRow}>
-                <IconBox size={42} radius={12} background={tints.blue14}>
-                  <BuildingIcon size={19} />
-                </IconBox>
-                <View style={styles.requestText}>
-                  <Text style={styles.requestName} numberOfLines={1}>{c.name}</Text>
-                  <Text style={styles.requestSub} numberOfLines={1}>
-                    {[c.region, c.owner_full_name && `direktor: ${c.owner_full_name}`].filter(Boolean).join(' · ')}
-                  </Text>
-                </View>
-                <TouchableOpacity activeOpacity={0.7} style={styles.moreBtn} onPress={() => setDetailCenter(c)}>
-                  <DotsIcon size={18} />
-                </TouchableOpacity>
-              </View>
-              <View style={styles.actions}>
-                <Button title="Tasdiqlash" variant="success" height={40} radius={11} fontSize={12.5} style={styles.actionBtn} onPress={() => act(c, 'approve')} />
-                <Button title="Rad etish" variant="danger" height={40} radius={11} fontSize={12.5} style={styles.actionBtn} onPress={() => act(c, 'reject')} />
-              </View>
+            <Card style={styles.statCard}>
+              <Text style={[styles.statValue, { color: colors.orange }]}>{pending.length}</Text>
+              <Text style={styles.statLabel}>Kutilmoqda</Text>
             </Card>
-          ))
-        )}
+          </View>
 
-        <Text style={styles.sectionTitle}>Foydalanuvchilar</Text>
-        <SearchBar
-          placeholder="Ism yoki telefon bo'yicha qidirish"
-          value={userQuery}
-          onChangeText={setUserQuery}
-          style={styles.userSearch}
-        />
-        {usersLoading ? (
-          <Card style={styles.emptyCard}>
-            <Text style={styles.emptyText}>Qidirilmoqda…</Text>
-          </Card>
-        ) : usersList.length === 0 ? (
-          <Card style={styles.emptyCard}>
-            <Text style={styles.emptyText}>{userQuery ? 'Foydalanuvchi topilmadi' : "Foydalanuvchilar yo'q"}</Text>
-          </Card>
-        ) : (
-          <View style={styles.userList}>
-            {usersList.map((u) => (
-              <TouchableOpacity key={u.id} activeOpacity={0.85} onPress={() => openManage(u)}>
-                <Card style={styles.userCard}>
-                  <Avatar
-                    letter={(u.full_name || '?').trim()[0]?.toUpperCase() || '?'}
-                    size={38}
-                    fontSize={14}
-                  />
-                  <View style={styles.userText}>
-                    <Text style={styles.userName} numberOfLines={1}>{u.full_name || 'Foydalanuvchi'}</Text>
-                    <Text style={styles.userSub} numberOfLines={1}>
-                      {[u.phone, roleLabels(u.roles)].filter(Boolean).join(' · ')}
+          <Text style={styles.sectionTitle}>Yangi markaz arizalari</Text>
+          {pending.length === 0 ? (
+            <Card style={styles.emptyCard}>
+              <Text style={styles.emptyText}>Kutilayotgan ariza yo'q</Text>
+            </Card>
+          ) : (
+            pending.map((c) => (
+              <Card key={c.id} style={styles.requestCard}>
+                <View style={styles.requestRow}>
+                  <IconBox size={42} radius={12} background={tints.blue14}>
+                    <BuildingIcon size={19} />
+                  </IconBox>
+                  <View style={styles.requestText}>
+                    <Text style={styles.requestName} numberOfLines={1}>{c.name}</Text>
+                    <Text style={styles.requestSub} numberOfLines={1}>
+                      {[c.region, c.owner_full_name && `direktor: ${c.owner_full_name}`].filter(Boolean).join(' · ')}
                     </Text>
                   </View>
-                  {u.is_active === false ? (
-                    <Badge label="Bloklangan" color={colors.red} background={tints.red12} size={10} />
-                  ) : u.is_premium ? (
-                    <Badge label="Premium" color={colors.gold} background={tints.gold14} size={10} />
-                  ) : null}
-                  <ChevronRightIcon size={16} color={colors.textMuted} />
-                </Card>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        <Text style={styles.sectionTitle}>Audit log</Text>
-        {audit.length === 0 ? (
-          <Card style={styles.emptyCard}>
-            <Text style={styles.emptyText}>Log yozuvlari yo'q</Text>
-          </Card>
-        ) : (
-          <Card style={styles.auditCard}>
-            {audit.slice(0, 12).map((entry, i) => (
-              <View
-                key={i}
-                style={[styles.auditRow, i < Math.min(audit.length, 12) - 1 ? styles.auditDivider : null]}
-              >
-                <View style={[styles.auditDot, { backgroundColor: DOT_BY_ACTION(entry.action) }]} />
-                <View style={styles.auditText}>
-                  <Text style={styles.auditTitle}>{entry.action || entry.message}</Text>
-                  <Text style={styles.auditMeta}>{[entry.actor, timeOf(entry.created_at)].filter(Boolean).join(' · ')}</Text>
+                  <TouchableOpacity activeOpacity={0.7} style={styles.moreBtn} onPress={() => setDetailCenter(c)}>
+                    <DotsIcon size={18} />
+                  </TouchableOpacity>
                 </View>
-              </View>
-            ))}
-          </Card>
-        )}
-      </ScrollView>
+                <View style={styles.actions}>
+                  <Button title="Tasdiqlash" variant="success" height={40} radius={11} fontSize={12.5} style={styles.actionBtn} onPress={() => act(c, 'approve')} />
+                  <Button title="Rad etish" variant="danger" height={40} radius={11} fontSize={12.5} style={styles.actionBtn} onPress={() => act(c, 'reject')} />
+                </View>
+              </Card>
+            ))
+          )}
+
+          <Text style={styles.sectionTitle}>Foydalanuvchilar</Text>
+          <SearchBar
+            placeholder="Ism yoki telefon bo'yicha qidirish"
+            value={userQuery}
+            onChangeText={setUserQuery}
+            style={styles.userSearch}
+          />
+          {usersLoading ? (
+            <Card style={styles.emptyCard}>
+              <Text style={styles.emptyText}>Qidirilmoqda…</Text>
+            </Card>
+          ) : usersList.length === 0 ? (
+            <Card style={styles.emptyCard}>
+              <Text style={styles.emptyText}>{userQuery ? 'Foydalanuvchi topilmadi' : "Foydalanuvchilar yo'q"}</Text>
+            </Card>
+          ) : (
+            <View style={styles.userList}>
+              {usersList.map((u) => (
+                <TouchableOpacity key={u.id} activeOpacity={0.85} onPress={() => openManage(u)}>
+                  <Card style={styles.userCard}>
+                    <Avatar
+                      letter={(u.full_name || '?').trim()[0]?.toUpperCase() || '?'}
+                      size={38}
+                      fontSize={14}
+                    />
+                    <View style={styles.userText}>
+                      <Text style={styles.userName} numberOfLines={1}>{u.full_name || 'Foydalanuvchi'}</Text>
+                      <Text style={styles.userSub} numberOfLines={1}>
+                        {[u.phone, roleLabels(u.roles)].filter(Boolean).join(' · ')}
+                      </Text>
+                    </View>
+                    {u.is_active === false ? (
+                      <Badge label="Bloklangan" color={colors.red} background={tints.red12} size={10} />
+                    ) : u.is_premium ? (
+                      <Badge label="Premium" color={colors.gold} background={tints.gold14} size={10} />
+                    ) : null}
+                    <ChevronRightIcon size={16} color={colors.textMuted} />
+                  </Card>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          <Text style={styles.sectionTitle}>Audit log</Text>
+          {audit.length === 0 ? (
+            <Card style={styles.emptyCard}>
+              <Text style={styles.emptyText}>Log yozuvlari yo'q</Text>
+            </Card>
+          ) : (
+            <Card style={styles.auditCard}>
+              {audit.slice(0, 12).map((entry, i) => (
+                <View
+                  key={i}
+                  style={[styles.auditRow, i < Math.min(audit.length, 12) - 1 ? styles.auditDivider : null]}
+                >
+                  <View style={[styles.auditDot, { backgroundColor: DOT_BY_ACTION(entry.action) }]} />
+                  <View style={styles.auditText}>
+                    <Text style={styles.auditTitle}>{entry.action || entry.message}</Text>
+                    <Text style={styles.auditMeta}>{[entry.actor, timeOf(entry.created_at)].filter(Boolean).join(' · ')}</Text>
+                  </View>
+                </View>
+              ))}
+            </Card>
+          )}
+        </ScrollView>
+      ) : tab === 1 ? (
+        <AdminAnalyticsScreen navigation={navigation} embedded />
+      ) : tab === 2 ? (
+        <AdminSupportScreen navigation={navigation} embedded />
+      ) : (
+        <AdminSubjectsScreen embedded />
+      )}
 
       <Modal visible={!!detailCenter} transparent animationType="fade" onRequestClose={() => setDetailCenter(null)}>
+        <View style={styles.modalRoot}>
         <TouchableOpacity activeOpacity={1} style={styles.overlay} onPress={() => setDetailCenter(null)} />
         <View style={styles.detailSheet}>
           <View style={styles.handle} />
@@ -470,9 +441,11 @@ export default function AdminScreen({ navigation }) {
             </>
           ) : null}
         </View>
+        </View>
       </Modal>
 
       <Modal visible={!!manageUser} transparent animationType="fade" onRequestClose={() => setManageUser(null)}>
+        <View style={styles.modalRoot}>
         <TouchableOpacity activeOpacity={1} style={styles.overlay} onPress={() => (busy ? null : setManageUser(null))} />
         <View style={styles.detailSheet}>
           <View style={styles.handle} />
@@ -635,6 +608,7 @@ export default function AdminScreen({ navigation }) {
             </>
           ) : null}
         </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -646,14 +620,24 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     backgroundColor: colors.bg,
   },
   content: {
-    paddingTop: 18,
+    paddingTop: 16,
     paddingHorizontal: 20,
     paddingBottom: 40,
+  },
+  topSection: {
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  tabsControl: {
+    marginTop: 14,
   },
   headerText: {
     flex: 1,
@@ -821,6 +805,9 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     color: colors.textMuted,
     marginTop: 2,
   },
+  modalRoot: {
+    flex: 1,
+  },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: colors.overlay,
@@ -894,39 +881,6 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     fontSize: 13,
     fontFamily: FONTS.bold,
     color: colors.textMuted,
-  },
-  // Navigatsiya kartalari (Analitika / Support)
-  navRow: {
-    flexDirection: 'row',
-    gap: 9,
-    marginTop: 12,
-  },
-  subjectsRowTouch: {
-    marginTop: 9,
-  },
-  subjectsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 14,
-  },
-  navCardTouch: {
-    flex: 1,
-  },
-  navCard: {
-    padding: 14,
-    gap: 8,
-  },
-  navTitle: {
-    fontSize: 13.5,
-    fontFamily: FONTS.extrabold,
-    color: colors.text,
-    marginTop: 2,
-  },
-  navSub: {
-    fontSize: 10.5,
-    fontFamily: FONTS.semibold,
-    color: colors.textSecondary,
   },
   // Foydalanuvchi boshqaruv modali
   manageHead: {

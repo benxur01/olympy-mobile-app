@@ -14,9 +14,11 @@ import { BookIcon, PlusIcon } from '../components/icons/Icons';
 
 const asArray = (data) => (Array.isArray(data) ? data : data?.results || []);
 
-export default function AdminSubjectsScreen() {
+export default function AdminSubjectsScreen({ embedded = false }) {
   const { colors, tints } = useTheme();
   const styles = makeStyles(colors, tints);
+  const Wrapper = embedded ? View : SafeAreaView;
+  const wrapperProps = embedded ? {} : { edges: ['top'] };
   const { data, loading, refreshing, error, reload, refresh } = useFetch(
     () => adminApi.subjects().then((r) => asArray(r.data)),
     []
@@ -50,14 +52,18 @@ export default function AdminSubjectsScreen() {
   if (error && !data) return <ErrorState onRetry={reload} />;
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
+    <Wrapper style={styles.screen} {...wrapperProps}>
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.blue} />}
       >
-        <Text style={styles.title}>Fanlar</Text>
-        <Text style={styles.subtitle}>Platformada ishlatiladigan fan kategoriyalari</Text>
+        {embedded ? null : (
+          <>
+            <Text style={styles.title}>Fanlar</Text>
+            <Text style={styles.subtitle}>Platformada ishlatiladigan fan kategoriyalari</Text>
+          </>
+        )}
 
         <Card radius={16} style={styles.addCard}>
           <Text style={styles.addLabel}>Yangi fan qo'shish</Text>
@@ -106,7 +112,7 @@ export default function AdminSubjectsScreen() {
           </View>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </Wrapper>
   );
 }
 

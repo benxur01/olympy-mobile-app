@@ -71,9 +71,11 @@ const DIFFICULTIES = [
 ];
 const LETTERS = ['A', 'B', 'C', 'D'];
 
-export default function OwnerPremiumScreen({ navigation, route }) {
+export default function OwnerPremiumScreen({ navigation, route = {}, embedded = false }) {
   const { colors, tints } = useTheme();
   const styles = makeStyles(colors, tints);
+  const Wrapper = embedded ? View : SafeAreaView;
+  const wrapperProps = embedded ? {} : { edges: ['top'] };
   const { user } = useAuth();
 
   const paramCenterId = route.params?.centerId;
@@ -294,21 +296,23 @@ export default function OwnerPremiumScreen({ navigation, route }) {
   const repTop = asArray(rep?.top_students);
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
-      <View style={styles.topBar}>
-        <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <BackIcon size={20} color={colors.text} />
-        </TouchableOpacity>
-        <View style={styles.headerText}>
-          <Text style={styles.title}>Premium tahlil</Text>
-          <Text style={styles.subtitle} numberOfLines={1}>
-            {data?.centerName || 'Markaz hisobotlari'}
-          </Text>
+    <Wrapper style={styles.screen} {...wrapperProps}>
+      {embedded ? null : (
+        <View style={styles.topBar}>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <BackIcon size={20} color={colors.text} />
+          </TouchableOpacity>
+          <View style={styles.headerText}>
+            <Text style={styles.title}>Premium tahlil</Text>
+            <Text style={styles.subtitle} numberOfLines={1}>
+              {data?.centerName || 'Markaz hisobotlari'}
+            </Text>
+          </View>
+          <View style={styles.crownWrap}>
+            <CrownIcon size={18} color={colors.gold} />
+          </View>
         </View>
-        <View style={styles.crownWrap}>
-          <CrownIcon size={18} color={colors.gold} />
-        </View>
-      </View>
+      )}
 
       <ScrollView
         contentContainerStyle={styles.content}
@@ -695,6 +699,7 @@ export default function OwnerPremiumScreen({ navigation, route }) {
 
       {/* Savol qo'shish modal */}
       <Modal visible={qbAddOpen} transparent animationType="slide" onRequestClose={() => (qbSaving ? null : setQbAddOpen(false))}>
+        <View style={styles.modalRoot}>
         <TouchableOpacity activeOpacity={1} style={styles.overlay} onPress={() => (qbSaving ? null : setQbAddOpen(false))} />
         <View style={styles.sheet}>
           <View style={styles.handle} />
@@ -775,8 +780,9 @@ export default function OwnerPremiumScreen({ navigation, route }) {
             <Text style={styles.cancel}>Bekor qilish</Text>
           </TouchableOpacity>
         </View>
+        </View>
       </Modal>
-    </SafeAreaView>
+    </Wrapper>
   );
 }
 
@@ -911,6 +917,7 @@ const makeStyles = (colors, tints) =>
       justifyContent: 'center',
     },
 
+    modalRoot: { flex: 1 },
     overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.overlay },
     sheet: {
       position: 'absolute',

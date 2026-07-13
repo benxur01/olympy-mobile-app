@@ -29,9 +29,11 @@ import { BackIcon, PlusIcon, EditIcon, CoinIcon, ShirtIcon } from '../components
 const asArray = (data) => (Array.isArray(data) ? data : data?.results || []);
 const emptyForm = { title: '', coin_cost: '', stock: '', description: '', icon: '🎁', is_active: true };
 
-export default function OwnerShopScreen({ navigation, route }) {
+export default function OwnerShopScreen({ navigation, route, embedded = false }) {
   const { colors, tints } = useTheme();
   const styles = makeStyles(colors, tints);
+  const Wrapper = embedded ? View : SafeAreaView;
+  const wrapperProps = embedded ? {} : { edges: ['top'] };
   const { user } = useAuth();
   const centerId = route?.params?.centerId ?? centerIdForUser(user);
   const [query, setQuery] = useState('');
@@ -139,12 +141,14 @@ export default function OwnerShopScreen({ navigation, route }) {
   if (error && !data) return <ErrorState onRetry={reload} />;
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
+    <Wrapper style={styles.screen} {...wrapperProps}>
       <View style={styles.topBar}>
-        <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <BackIcon size={20} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.topTitle}>Do'kon boshqaruvi</Text>
+        {embedded ? null : (
+          <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <BackIcon size={20} color={colors.text} />
+          </TouchableOpacity>
+        )}
+        {embedded ? <View style={{ flex: 1 }} /> : <Text style={styles.topTitle}>Do'kon boshqaruvi</Text>}
         <TouchableOpacity activeOpacity={0.85} onPress={openNew} style={styles.addIconBtn}>
           <PlusIcon size={16} color={colors.white} strokeWidth={2.6} />
         </TouchableOpacity>
@@ -200,6 +204,7 @@ export default function OwnerShopScreen({ navigation, route }) {
       </ScrollView>
 
       <Modal visible={!!editing} transparent animationType="slide" onRequestClose={closeModal}>
+        <View style={styles.modalRoot}>
         <TouchableOpacity activeOpacity={1} style={styles.overlay} onPress={closeModal} />
         <View style={styles.sheet}>
           <View style={styles.handle} />
@@ -236,8 +241,9 @@ export default function OwnerShopScreen({ navigation, route }) {
             <Text style={styles.cancel}>Bekor qilish</Text>
           </TouchableOpacity>
         </View>
+        </View>
       </Modal>
-    </SafeAreaView>
+    </Wrapper>
   );
 }
 
@@ -262,6 +268,7 @@ const makeStyles = (colors, tints) => StyleSheet.create({
   productStock: { fontSize: 11.5, fontFamily: FONTS.semibold, color: colors.textSecondary },
   rowAction: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
   deleteX: { fontSize: 16, fontFamily: FONTS.bold, color: colors.red },
+  modalRoot: { flex: 1 },
   overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.overlay },
   sheet: {
     position: 'absolute',
