@@ -1,19 +1,41 @@
 name: Update production apps
 
 # master branchga push qilinganda avtomatik ishga tushadi va
-# Android hamda iOS uchun OTA (over-the-air) update chop etadi.
+# Android uchun OTA (over-the-air) update chop etadi.
 # Bu faqat JS/asset o'zgarishlarini foydalanuvchilarga yetkazadi.
-# Agar native kod o'zgargan bo'lsa (masalan yangi native kutubxona
-# qo'shilsa), bu update yetarli emas - build-production.yml orqali
-# yangi build yaratib, do'konlarga qayta chiqarish kerak bo'ladi.
+#
+# XAVFSIZLIK TEKSHIRUVI: OTA faqat shu commit'ning "fingerprint"i
+# (native kodga bog'liq fayllar - package.json, app.json va h.k.)
+# bo'yicha mos keladigan, MUVAFFAQIYATLI tugagan production build
+# allaqachon mavjud bo'lsagina chop etiladi. Aks holda (masalan yangi
+# native kutubxona qo'shilgan bo'lsa) OTA avtomatik o'tkazib yuboriladi -
+# bunday holatda avval build-production.yml orqali yangi build
+# yaratib, do'konga chiqarish kerak bo'ladi, keyingi push'lardan
+# boshlab OTA yana avtomatik davom etadi.
 
 on:
   push:
     branches: ['master']
 
 jobs:
+  fingerprint:
+    name: Calculate fingerprint
+    type: fingerprint
+    environment: production
+
+  get_build_android:
+    name: Find matching Android build
+    needs: [fingerprint]
+    type: get-build
+    params:
+      platform: android
+      profile: production
+      fingerprint_hash: ${{ needs.fingerprint.outputs.android_fingerprint_hash }}
+
   publish_update:
     name: Publish OTA update (production)
+    needs: [get_build_android]
+    if: ${{ needs.get_build_android.outputs.build_id != '' }}
     type: update
     params:
       branch: production
