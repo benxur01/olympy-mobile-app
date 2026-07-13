@@ -16,8 +16,12 @@ export default function DonutProgress({
   const r = radius || (size - strokeWidth * 2) / 2 + strokeWidth / 2;
   const c = 2 * Math.PI * r;
   const filled = (progress / 100) * c;
+  // Halqa teshigining ichki diametri — kontent (raqam/label) shundan
+  // kengroq bo'lib ketsa, halqa chizig'idan tashqariga chiqib ketadi.
+  const innerRadius = r - strokeWidth / 2;
+  const safeContentSize = innerRadius * 2;
   return (
-    <View style={{ width: size, height: size }}>
+    <View style={{ width: size, height: size, overflow: 'hidden' }}>
       <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <Circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track || colors.barIdle} strokeWidth={strokeWidth} />
         <Circle
@@ -32,7 +36,7 @@ export default function DonutProgress({
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
         />
       </Svg>
-      <View style={styles.center}>{children}</View>
+      <View style={[styles.center, { maxWidth: safeContentSize, maxHeight: safeContentSize }]}>{children}</View>
     </View>
   );
 }

@@ -417,11 +417,13 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     fontFamily: FONTS.extrabold,
     color: colors.text,
     lineHeight: 32,
+    textAlign: 'center',
   },
   scoreMax: {
     fontSize: 11,
     fontFamily: FONTS.bold,
     color: colors.textSecondary,
+    textAlign: 'center',
   },
   scoreStats: {
     gap: 10,

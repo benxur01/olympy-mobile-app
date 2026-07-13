@@ -11,23 +11,25 @@ export default function QuickMenu({ visible, onClose, items = [], title }) {
   const styles = makeStyles(colors);
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <TouchableOpacity activeOpacity={1} style={styles.overlay} onPress={onClose} />
-      <View style={styles.menu}>
-        {title ? <Text style={styles.title}>{title}</Text> : null}
-        {items.map((it, i) => (
-          <TouchableOpacity
-            key={i}
-            activeOpacity={0.75}
-            onPress={() => {
-              onClose && onClose();
-              it.onPress && it.onPress();
-            }}
-            style={[styles.item, i < items.length - 1 ? styles.itemBorder : null]}
-          >
-            {it.icon ? <View style={styles.iconBox}>{it.icon}</View> : null}
-            <Text style={[styles.label, it.danger ? { color: colors.red } : null]}>{it.label}</Text>
-          </TouchableOpacity>
-        ))}
+      <View style={styles.root}>
+        <TouchableOpacity activeOpacity={1} style={styles.overlay} onPress={onClose} />
+        <View style={styles.menu}>
+          {title ? <Text style={styles.title}>{title}</Text> : null}
+          {items.map((it, i) => (
+            <TouchableOpacity
+              key={i}
+              activeOpacity={0.75}
+              onPress={() => {
+                onClose && onClose();
+                it.onPress && it.onPress();
+              }}
+              style={[styles.item, i < items.length - 1 ? styles.itemBorder : null]}
+            >
+              {it.icon ? <View style={styles.iconBox}>{it.icon}</View> : null}
+              <Text style={[styles.label, it.danger ? { color: colors.red } : null]}>{it.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
     </Modal>
   );
@@ -35,6 +37,9 @@ export default function QuickMenu({ visible, onClose, items = [], title }) {
 
 const makeStyles = (colors) =>
   StyleSheet.create({
+    root: {
+      flex: 1,
+    },
     overlay: {
       ...StyleSheet.absoluteFillObject,
       backgroundColor: colors.overlay,

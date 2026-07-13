@@ -75,11 +75,13 @@ const makeStyles = (colors, tints) =>
     titleRow: {
       flexDirection: 'row',
       alignItems: 'center',
+      flexWrap: 'wrap',
       gap: 7,
     },
     title: {
       fontSize: 13.5,
       fontFamily: FONTS.extrabold,
+      flexShrink: 1,
     },
     sub: {
       fontSize: 11.5,

@@ -231,12 +231,8 @@ export default function StudentHomeScreen({ navigation }) {
             <MenuIcon size={22} />
           </TouchableOpacity>
           <View style={styles.headerText}>
-            <Text style={styles.greeting}>Salom, {(user?.full_name || 'Foydalanuvchi').split(' ')[0]}!</Text>
-            <Text style={styles.center}>{user?.center_name || 'Olympy platformasi'}</Text>
-          </View>
-          <View style={styles.streakPill}>
-            <FlameIcon size={14} />
-            <Text style={styles.streakText}>{streak.streak_count ?? 0} kun</Text>
+            <Text style={styles.greeting} numberOfLines={1}>Salom, {(user?.full_name || 'Foydalanuvchi').split(' ')[0]}!</Text>
+            <Text style={styles.center} numberOfLines={1}>{user?.center_name || 'Olympy platformasi'}</Text>
           </View>
           <TouchableOpacity activeOpacity={0.8} style={styles.bellBox} onPress={() => navigation.navigate('Notifications')}>
             <BellIcon size={18} />
@@ -245,6 +241,11 @@ export default function StudentHomeScreen({ navigation }) {
           <TouchableOpacity activeOpacity={0.8} onPress={() => navigation.navigate('Profil')}>
             <Avatar letter={initial} size={38} fontSize={15} />
           </TouchableOpacity>
+        </View>
+
+        <View style={[styles.streakPill, styles.streakPillRow]}>
+          <FlameIcon size={14} />
+          <Text style={styles.streakText}>{streak.streak_count ?? 0} kun</Text>
         </View>
 
         {Array.isArray(user?.badges) && user.badges.length > 0 ? (
@@ -466,6 +467,7 @@ export default function StudentHomeScreen({ navigation }) {
       <QuickMenu visible={menuOpen} onClose={() => setMenuOpen(false)} title="TEZ MENYU" items={menuItems} />
 
       <Modal visible={calendarOpen} transparent animationType="slide" onRequestClose={() => setCalendarOpen(false)}>
+        <View style={styles.calRoot}>
         <TouchableOpacity activeOpacity={1} style={styles.calOverlay} onPress={() => setCalendarOpen(false)} />
         <View style={styles.calSheet}>
           <View style={styles.calHandle} />
@@ -518,6 +520,7 @@ export default function StudentHomeScreen({ navigation }) {
           <TouchableOpacity activeOpacity={0.7} onPress={() => setCalendarOpen(false)}>
             <Text style={styles.calCancel}>Yopish</Text>
           </TouchableOpacity>
+        </View>
         </View>
       </Modal>
     </SafeAreaView>
@@ -572,6 +575,10 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 6,
     paddingHorizontal: 10,
+  },
+  streakPillRow: {
+    alignSelf: 'flex-start',
+    marginTop: 12,
   },
   streakText: {
     fontSize: 13,
@@ -799,6 +806,9 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     fontFamily: FONTS.semibold,
     color: colors.textSecondary,
     marginTop: 2,
+  },
+  calRoot: {
+    flex: 1,
   },
   calOverlay: {
     ...StyleSheet.absoluteFillObject,
