@@ -87,7 +87,7 @@ export default function TabBar({ items, activeKey, onPress, style }) {
       ]}
     >
       <View style={styles.cardShadow}>
-        <BlurView intensity={85} tint={isDark ? 'dark' : 'light'} style={styles.card}>
+        <BlurView intensity={60} tint={isDark ? 'dark' : 'light'} style={styles.card}>
           {/* Siljib yuruvchi active-indicator (pill) */}
           <Animated.View
             pointerEvents="none"
@@ -162,7 +162,7 @@ const makeStyles = (colors, isDark) =>
     card: {
       flexDirection: 'row',
       alignItems: 'flex-start',
-      backgroundColor: isDark ? 'rgba(15,24,48,0.28)' : 'rgba(255,255,255,0.28)',
+      backgroundColor: isDark ? 'rgba(15,24,48,0.5)' : 'rgba(255,255,255,0.5)',
       overflow: 'hidden',
       borderRadius: 26,
       paddingTop: 10,
