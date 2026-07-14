@@ -1,17 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated, Platform } from 'react-native';
 import { BlurView } from 'expo-blur';
-import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FONTS } from '../constants/typography';
 import { useTheme } from '../services/ThemeContext';
 
 // Balandligi (icon qatori) — siljuvchi indicator ham shu balandlikda.
 const ICON_ROW_H = 34;
-// Navbar tepasidagi so'nish (fade) zonasi balandligi — scroll qilingan
-// kontent kartaning qattiq chegarasiga birdaniga urilib qolmasin, undan
-// oldinroq asta-sekin ekran foniga aralashib bora boshlasin deb qo'yilgan.
-const FADE_HEIGHT = 48;
 // Tab bar balandligi (insets.bottom'siz, taxminiy) — endi u kontent ustida
 // suzib turgani uchun ekranlardagi FAB kabi elementlar shu qiymat + insets
 // asosida navbar tagida qolib ketmasligi kerak.
@@ -91,17 +86,6 @@ export default function TabBar({ items, activeKey, onPress, style }) {
         style,
       ]}
     >
-      <View pointerEvents="none" style={styles.fade}>
-        <Svg width="100%" height="100%">
-          <Defs>
-            <LinearGradient id="tabBarFade" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor={colors.bg} stopOpacity={0} />
-              <Stop offset="1" stopColor={colors.bg} stopOpacity={0.95} />
-            </LinearGradient>
-          </Defs>
-          <Rect x="0" y="0" width="100%" height="100%" fill="url(#tabBarFade)" />
-        </Svg>
-      </View>
       <View style={styles.cardShadow}>
         <BlurView intensity={60} tint={isDark ? 'dark' : 'light'} style={styles.card}>
           {/* Siljib yuruvchi active-indicator (pill) */}
@@ -161,17 +145,6 @@ const makeStyles = (colors, isDark) =>
       backgroundColor: 'transparent',
       paddingHorizontal: 16,
       paddingTop: 6,
-    },
-    // Kartaning qattiq yuqori chegarasidan oldinroq boshlanadigan so'nish
-    // zonasi — wrap'ning o'zidan yuqoriga chiqib turadi (top manfiy) va
-    // uning gorizontal paddingini ham qoplaydi (left/right manfiy), shunda
-    // butun ekran kengligida bir xilda so'nadi.
-    fade: {
-      position: 'absolute',
-      top: -FADE_HEIGHT,
-      left: -16,
-      right: -16,
-      height: FADE_HEIGHT,
     },
     // Soya alohida qatlamda — chunki BlurView'dagi overflow:'hidden' bilan
     // bitta stilda bo'lsa, Android soyani ham kesib tashlaydi. Android'da
