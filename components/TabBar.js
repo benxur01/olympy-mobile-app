@@ -147,14 +147,19 @@ const makeStyles = (colors, isDark) =>
       paddingTop: 6,
     },
     // Soya alohida qatlamda — chunki BlurView'dagi overflow:'hidden' bilan
-    // bitta stilda bo'lsa, Android soyani ham kesib tashlaydi.
+    // bitta stilda bo'lsa, Android soyani ham kesib tashlaydi. Android'da
+    // elevation soyasi faqat shaffof bo'lmagan fonli View'da chiziladi —
+    // shuning uchun bu qatlamga navBg beriladi (ustidagi BlurView xuddi shu
+    // shaklda uni to'liq qoplab turadi, shu bois ko'rinmaydi, faqat soyasi
+    // chiqadi).
     cardShadow: {
       borderRadius: 26,
+      backgroundColor: colors.navBg,
       shadowColor: colors.shadow,
       shadowOffset: { width: 0, height: 8 },
       shadowOpacity: isDark ? 0.4 : 0.14,
       shadowRadius: 20,
-      elevation: 12,
+      elevation: 40,
     },
     // "Suzuvchi" karta — yumaloq burchak, shaffof BlurView foni (Telegram
     // uslubidagi "muzlatilgan shisha"); ustiga o'qish uchun yengil tint
