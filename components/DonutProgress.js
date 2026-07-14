@@ -21,7 +21,7 @@ export default function DonutProgress({
   const innerRadius = r - strokeWidth / 2;
   const safeContentSize = innerRadius * 2;
   return (
-    <View style={{ width: size, height: size, overflow: 'hidden' }}>
+    <View style={{ width: size, height: size }}>
       <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <Circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track || colors.barIdle} strokeWidth={strokeWidth} />
         <Circle
@@ -36,14 +36,25 @@ export default function DonutProgress({
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
         />
       </Svg>
-      <View style={[styles.center, { maxWidth: safeContentSize, maxHeight: safeContentSize }]}>{children}</View>
+      <View style={styles.center}>
+        <View style={{ maxWidth: safeContentSize, maxHeight: safeContentSize, alignItems: 'center' }}>
+          {children}
+        </View>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   center: {
-    ...StyleSheet.absoluteFillObject,
+    // StyleSheet.absoluteFillObject (position:absolute + inset:0 orqali)
+    // Fabric'da bu komponent uchun ishlamay, kontent halqa ostiga "oqib"
+    // tushib qolgan — shuning uchun inset qiymatlari aniq raqam bilan beriladi.
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
