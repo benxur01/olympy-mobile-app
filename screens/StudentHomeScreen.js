@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, A
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../services/ThemeContext';
 import { FONTS } from '../constants/typography';
+import { useTabBarSpacing } from '../components/TabBar';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
 import Button from '../components/Button';
@@ -90,6 +91,7 @@ const nextMidnightTs = () => {
 export default function StudentHomeScreen({ navigation }) {
   const { colors, tints } = useTheme();
   const styles = makeStyles(colors, tints);
+  const tabBarSpacing = useTabBarSpacing();
   const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   // Bir soniyalik "soat" — barcha countdown'larni bitta interval boshqaradi.
@@ -222,7 +224,7 @@ export default function StudentHomeScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: tabBarSpacing }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.blue} />}
       >

@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import { useTheme } from '../services/ThemeContext';
 import { FONTS } from '../constants/typography';
+import { useTabBarSpacing } from '../components/TabBar';
 import Card from '../components/Card';
 import Chip from '../components/Chip';
 import Badge from '../components/Badge';
@@ -31,6 +32,7 @@ const LETTERS = ['A', 'B', 'C', 'D'];
 export default function QuestionCreatorScreen({ navigation }) {
   const { colors, tints } = useTheme();
   const styles = makeStyles(colors, tints);
+  const tabBarSpacing = useTabBarSpacing();
   const { user } = useAuth();
   const centerId = centerIdForUser(user);
 
@@ -509,7 +511,7 @@ export default function QuestionCreatorScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: tabBarSpacing }]} showsVerticalScrollIndicator={false}>
         <Text style={styles.title}>Savol yaratish</Text>
 
         <ScrollView

@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../services/ThemeContext';
 import { FONTS } from '../constants/typography';
+import { useTabBarSpacing } from '../components/TabBar';
 import Badge from '../components/Badge';
 import Avatar from '../components/Avatar';
 import Button from '../components/Button';
@@ -29,6 +30,7 @@ const firstLetter = (name) => ((name || '?')[0] || '?').toUpperCase();
 export default function EssayGradingScreen() {
   const { colors, tints } = useTheme();
   const styles = makeStyles(colors, tints);
+  const tabBarSpacing = useTabBarSpacing();
   const { user } = useAuth();
   // Sof menejerda teacher olimpiadalari bo'sh — bunday holda markaz
   // statistikasidagi natijasi bor tadbirlarni ishlatamiz (so'rovlar sonini
@@ -193,7 +195,7 @@ export default function EssayGradingScreen() {
           height={50}
           radius={13}
           fontSize={15}
-          style={styles.saveBtn}
+          style={[styles.saveBtn, { marginBottom: tabBarSpacing }]}
           disabled={saving}
           onPress={save}
         />

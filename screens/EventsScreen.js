@@ -3,6 +3,7 @@ import { View, Text, ScrollView, StyleSheet, RefreshControl } from 'react-native
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../services/ThemeContext';
 import { FONTS } from '../constants/typography';
+import { useTabBarSpacing } from '../components/TabBar';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
 import Button from '../components/Button';
@@ -94,6 +95,7 @@ function EventCard({ event, onEnter }) {
 export default function EventsScreen({ navigation }) {
   const { colors, tints } = useTheme();
   const styles = makeStyles(colors, tints);
+  const tabBarSpacing = useTabBarSpacing();
   const [query, setQuery] = useState('');
   const { data, loading, refreshing, error, reload, refresh } = useFetch(
     () => studentApi.olympiads().then((r) => asArray(r.data)),
@@ -127,7 +129,7 @@ export default function EventsScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: tabBarSpacing }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.blue} />}
       >

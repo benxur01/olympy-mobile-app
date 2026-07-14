@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../services/ThemeContext';
 import { FONTS } from '../constants/typography';
+import { useTabBarSpacing } from '../components/TabBar';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
 import Avatar from '../components/Avatar';
@@ -46,6 +47,7 @@ export default function ManagerStudentsScreen() {
   const { colors, tints } = useTheme();
   const styles = makeStyles(colors, tints);
   const AVATAR_COLORS = makeAVATAR_COLORS(colors);
+  const tabBarSpacing = useTabBarSpacing();
   const { user } = useAuth();
   const centerId = centerIdForUser(user);
   const [query, setQuery] = useState('');
@@ -133,7 +135,7 @@ export default function ManagerStudentsScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: tabBarSpacing }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.blue} />}
       >

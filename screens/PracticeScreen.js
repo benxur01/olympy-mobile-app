@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, RefreshCon
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../services/ThemeContext';
 import { FONTS } from '../constants/typography';
+import { useTabBarSpacing } from '../components/TabBar';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
 import IconBox from '../components/IconBox';
@@ -46,6 +47,7 @@ export default function PracticeScreen({ navigation }) {
   const { colors, tints } = useTheme();
   const styles = makeStyles(colors, tints);
   const SUBJECT_COLORS = makeSUBJECT_COLORS(colors, tints);
+  const tabBarSpacing = useTabBarSpacing();
   const { user } = useAuth();
   const [explaining, setExplaining] = useState(false);
   const [picker, setPicker] = useState(null); // null | 'topic' | 'past'
@@ -123,7 +125,7 @@ export default function PracticeScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: tabBarSpacing }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.blue} />}
       >

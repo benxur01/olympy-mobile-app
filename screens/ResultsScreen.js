@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, S
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../services/ThemeContext';
 import { FONTS } from '../constants/typography';
+import { useTabBarSpacing } from '../components/TabBar';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
 import ProgressBar from '../components/ProgressBar';
@@ -70,6 +71,7 @@ export default function ResultsScreen({ navigation }) {
   const { colors, tints } = useTheme();
   const styles = makeStyles(colors, tints);
   const SECTION_COLORS = makeSECTION_COLORS(colors, tints);
+  const tabBarSpacing = useTabBarSpacing();
   const { user } = useAuth();
   const isPremium = user?.is_premium || user?.is_premium_active;
   const [aiData, setAiData] = useState(null);
@@ -184,7 +186,7 @@ export default function ResultsScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: tabBarSpacing }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.blue} />}
       >

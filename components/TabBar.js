@@ -15,6 +15,14 @@ export const TAB_BAR_CONTENT_HEIGHT = 74;
 // bir xil kenglikda, shu bois pill kengligi tab almashganda sakramaydi).
 const pillWidth = (itemW) => Math.min(64, Math.max(48, itemW - 8));
 
+// Tab ekranlaridagi ScrollView/FlatList pastki bo'shlig'i uchun — shunda
+// ro'yxat oxirigacha scroll qilinganda oxirgi element navbar ostida
+// qolib qolmay, undan tepada to'liq ko'rinadigan bo'ladi.
+export function useTabBarSpacing(extra = 24) {
+  const insets = useSafeAreaInsets();
+  return TAB_BAR_CONTENT_HEIGHT + Math.max(insets.bottom, 14) + extra;
+}
+
 export default function TabBar({ items, activeKey, onPress, style }) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();

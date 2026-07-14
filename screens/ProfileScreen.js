@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../services/ThemeContext';
 import { FONTS } from '../constants/typography';
+import { useTabBarSpacing } from '../components/TabBar';
 import Card from '../components/Card';
 import Avatar from '../components/Avatar';
 import Chip from '../components/Chip';
@@ -156,6 +157,7 @@ function ReferralSection({ referral, onUsed, styles, colors }) {
 export default function ProfileScreen({ navigation }) {
   const { colors, tints, mode, setThemeMode } = useTheme();
   const styles = makeStyles(colors, tints);
+  const tabBarSpacing = useTabBarSpacing();
   const CERT_TINTS = [tints.gold13, tints.blue13, tints.green13];
   const CERT_COLORS = [colors.gold, colors.blue, colors.greenLight];
   const OLY_STATUS = {
@@ -431,7 +433,7 @@ export default function ProfileScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: tabBarSpacing }]} showsVerticalScrollIndicator={false}>
         <View style={[styles.profileCard, isPremium ? styles.profilePremium : null]}>
           <TouchableOpacity activeOpacity={0.85} onPress={onAvatarPress} disabled={avatarUploading}>
             <Avatar
