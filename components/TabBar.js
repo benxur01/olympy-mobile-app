@@ -162,7 +162,7 @@ const makeStyles = (colors, isDark) =>
     card: {
       flexDirection: 'row',
       alignItems: 'flex-start',
-      backgroundColor: isDark ? 'rgba(15,24,48,0.5)' : 'rgba(255,255,255,0.5)',
+      backgroundColor: isDark ? 'rgba(15,24,48,0.94)' : 'rgba(255,255,255,0.94)',
       overflow: 'hidden',
       borderRadius: 26,
       paddingTop: 10,
