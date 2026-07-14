@@ -7,6 +7,10 @@ import { useTheme } from '../services/ThemeContext';
 
 // Balandligi (icon qatori) — siljuvchi indicator ham shu balandlikda.
 const ICON_ROW_H = 34;
+// Tab bar balandligi (insets.bottom'siz, taxminiy) — endi u kontent ustida
+// suzib turgani uchun ekranlardagi FAB kabi elementlar shu qiymat + insets
+// asosida navbar tagida qolib ketmasligi kerak.
+export const TAB_BAR_CONTENT_HEIGHT = 74;
 // Pill kengligini o'lchangan tab kengligidan chiqaramiz (barcha tab flex:1 —
 // bir xil kenglikda, shu bois pill kengligi tab almashganda sakramaydi).
 const pillWidth = (itemW) => Math.min(64, Math.max(48, itemW - 8));
@@ -75,7 +79,7 @@ export default function TabBar({ items, activeKey, onPress, style }) {
       ]}
     >
       <View style={styles.cardShadow}>
-        <BlurView intensity={70} tint={isDark ? 'dark' : 'light'} style={styles.card}>
+        <BlurView intensity={85} tint={isDark ? 'dark' : 'light'} style={styles.card}>
           {/* Siljib yuruvchi active-indicator (pill) */}
           <Animated.View
             pointerEvents="none"
@@ -123,9 +127,13 @@ export default function TabBar({ items, activeKey, onPress, style }) {
 
 const makeStyles = (colors, isDark) =>
   StyleSheet.create({
-    // Tashqi konteyner — layout joyini egallaydi (kontent uning tepasida qoladi),
-    // lekin foni shaffof: karta pastdan/yon tomondan suzib turgandek ko'rinadi.
+    // Kontent ustida suzib turadi (o'z joyini egallamaydi) — scroll pastga
+    // borganda oxirgi elementlar shaffof/blur karta orqasidan ko'rinib turadi.
     wrap: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: 0,
       backgroundColor: 'transparent',
       paddingHorizontal: 16,
       paddingTop: 6,
@@ -146,14 +154,12 @@ const makeStyles = (colors, isDark) =>
     card: {
       flexDirection: 'row',
       alignItems: 'flex-start',
-      backgroundColor: isDark ? 'rgba(15,24,48,0.55)' : 'rgba(255,255,255,0.55)',
+      backgroundColor: isDark ? 'rgba(15,24,48,0.28)' : 'rgba(255,255,255,0.28)',
       overflow: 'hidden',
       borderRadius: 26,
       paddingTop: 10,
       paddingBottom: 8,
       paddingHorizontal: 6,
-      borderWidth: 1,
-      borderColor: colors.border,
     },
     item: {
       flex: 1,

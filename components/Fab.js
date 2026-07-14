@@ -1,13 +1,24 @@
 import React from 'react';
 import { TouchableOpacity, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChatFabIcon } from './icons/Icons';
 import { useTheme } from '../services/ThemeContext';
+import { TAB_BAR_CONTENT_HEIGHT } from './TabBar';
 
-export default function Fab({ onPress, bottom = 16, right = 16 }) {
+export default function Fab({ onPress, bottom, right = 16 }) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = makeStyles(colors);
+  // Tab bar endi kontent ustida suzib turadi (o'z joyini egallamaydi) —
+  // shuning uchun FAB navbar tagida qolib ketmasligi uchun uning balandligi
+  // + insets hisobga olinadi.
+  const defaultBottom = TAB_BAR_CONTENT_HEIGHT + insets.bottom + 16;
   return (
-    <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={[styles.fab, { bottom, right }]}>
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={onPress}
+      style={[styles.fab, { bottom: bottom ?? defaultBottom, right }]}
+    >
       <ChatFabIcon size={24} />
     </TouchableOpacity>
   );
