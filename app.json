@@ -16,13 +16,22 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "uz.prolymp.olympy"
+      "bundleIdentifier": "uz.prolymp.olympy",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Olympy profil rasmingizni yuklash uchun galereyaga ruxsat so'raydi.",
+        "NSPhotoLibraryAddUsageDescription": "Olympy sertifikat va hisobotlarni galereyaga saqlash uchun ruxsat so'raydi."
+      }
     },
     "android": {
       "package": "uz.prolymp.olympy",
       "versionCode": 1,
-      "permissions": [
-        "android.permission.RECORD_AUDIO"
+      "allowBackup": false,
+      "permissions": [],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_EXTERNAL_STORAGE"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -35,6 +44,7 @@
     },
     "plugins": [
       "expo-font",
+      "expo-secure-store",
       [
         "expo-splash-screen",
         {
