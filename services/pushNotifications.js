@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
+import { devLog } from './logger';
 
 // Foreground'da kelgan bildirishnomalar jimgina yutilib ketmasligi uchun banner
 // ko'rsatamiz. Ushbu SDK versiyasida NotificationBehavior shakli o'zgargan:
@@ -24,7 +25,7 @@ export async function registerForPushNotificationsAsync() {
     // Push tokenlar simulyator/web'da ishlamaydi (Expo cheklovi) — o'tkazib
     // yuboramiz.
     if (!Device.isDevice) {
-      console.log('[push] Fizik qurilma emas — push tokenni o\'tkazib yuboramiz.');
+      devLog('[push] Fizik qurilma emas — push tokenni o\'tkazib yuboramiz.');
       return null;
     }
 
@@ -45,7 +46,7 @@ export async function registerForPushNotificationsAsync() {
       finalStatus = status;
     }
     if (finalStatus !== 'granted') {
-      console.log('[push] Bildirishnoma ruxsati berilmadi.');
+      devLog('[push] Bildirishnoma ruxsati berilmadi.');
       return null;
     }
 
@@ -53,14 +54,14 @@ export async function registerForPushNotificationsAsync() {
       Constants?.expoConfig?.extra?.eas?.projectId ??
       Constants?.easConfig?.projectId;
     if (!projectId) {
-      console.log('[push] EAS projectId topilmadi — token olib bo\'lmadi.');
+      devLog('[push] EAS projectId topilmadi — token olib bo\'lmadi.');
       return null;
     }
 
     const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
     return tokenResponse?.data ?? null;
   } catch (e) {
-    console.log('[push] registerForPushNotificationsAsync xatosi:', e?.message || e);
+    devLog('[push] registerForPushNotificationsAsync xatosi:', e?.message || e);
     return null;
   }
 }

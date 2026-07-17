@@ -5,7 +5,7 @@ export const API_BASE_URL = (
 export const API_TIMEOUT = 20000;
 
 // Maxfiylik siyosati (Privacy Policy) URL'i. Google Play talabi.
-// TODO(user): bu yerga hostlangan haqiqiy maxfiylik siyosati sahifasi URL'ini qo'ying.
+// Hostlangan sahifa: https://prolymp.uz/privacy
 export const PRIVACY_POLICY_URL = 'https://prolymp.uz/privacy';
 
 // Foydalanish shartlari (ixtiyoriy) — mavjud bo'lsa profil sozlamalarida ko'rsatiladi.

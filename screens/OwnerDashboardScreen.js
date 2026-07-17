@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, SafeAreaInsetsContext, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../services/ThemeContext';
 import { FONTS } from '../constants/typography';
 import Card from '../components/Card';
@@ -76,17 +77,44 @@ const memberName = (m) => m.full_name || m.user_name || m.user?.full_name || "A'
 const roleLabelOf = (role) =>
   role === 'manager' ? 'Menejer' : role === 'teacher' ? "O'qituvchi" : role || '';
 
+const OWNER_CENTER_KEY = 'olympy_owner_selected_center';
+
 export default function OwnerDashboardScreen({ navigation }) {
   const { colors, tints } = useTheme();
   const styles = makeStyles(colors, tints);
   const AVATAR_COLORS = makeAVATAR_COLORS(colors, tints);
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
+  // Ko'p markaz: tanlangan markaz ID (AsyncStorage'da saqlanadi).
+  const [selectedCenterId, setSelectedCenterId] = useState(null);
+  const [centerPickerOpen, setCenterPickerOpen] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem(OWNER_CENTER_KEY)
+      .then((id) => {
+        if (id) setSelectedCenterId(Number(id) || id);
+      })
+      .catch(() => {});
+  }, []);
+
+  const selectCenter = async (id) => {
+    setSelectedCenterId(id);
+    setCenterPickerOpen(false);
+    try {
+      await AsyncStorage.setItem(OWNER_CENTER_KEY, String(id));
+    } catch (e) {
+      // ignore
+    }
+  };
+
   const { data, loading, error, reload } = useFetch(async () => {
     const centersData = await ownerApi.myCenters().then((r) => r.data).catch(() => null);
     const centers = asArray(centersData);
-    const center = centers[0];
-    if (!center) return { center: null, stats: null, staff: [] };
+    if (!centers.length) return { centers: [], center: null, stats: null, staff: [] };
+    // Saqlangan ID ro'yxatda bo'lsa shuni, aks holda birinchi markaz.
+    const center =
+      (selectedCenterId != null && centers.find((c) => String(c.id) === String(selectedCenterId))) ||
+      centers[0];
     const [stats, staff, trend, limits] = await Promise.all([
       ownerApi.centerStats(center.id).then((r) => r.data).catch(() => null),
       ownerApi.staffMemberships(center.id).then((r) => r.data).catch(() => null),
@@ -97,13 +125,14 @@ export default function OwnerDashboardScreen({ navigation }) {
       billingApi.limits(center.id).then((r) => r.data).catch(() => null),
     ]);
     return {
+      centers,
       center,
       stats,
       staff: asArray(staff),
       trend: Array.isArray(trend) ? trend : [],
       limits: limits && typeof limits === 'object' ? limits : null,
     };
-  }, []);
+  }, [selectedCenterId]);
 
   const [tab, setTab] = useState('Panel');
   // Jamoa tabidagi segmentli almashtirgich: xodimlar ro'yxati yoki o'quvchilar.
@@ -142,6 +171,7 @@ export default function OwnerDashboardScreen({ navigation }) {
   const [createRegionPicker, setCreateRegionPicker] = useState(false);
   const [createDistrictPicker, setCreateDistrictPicker] = useState(false);
 
+  const centers = data?.centers || [];
   const center = data?.center;
   const stats = data?.stats || {};
   const staff = data?.staff || [];
@@ -217,6 +247,13 @@ export default function OwnerDashboardScreen({ navigation }) {
 
   const setField = (k, v) => setForm((prev) => ({ ...prev, [k]: v }));
 
+  const generateTempPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    let out = '';
+    for (let i = 0; i < 10; i += 1) out += chars[Math.floor(Math.random() * chars.length)];
+    return out;
+  };
+
   const submitStaff = async () => {
     if (saving) return;
     if (!form.full_name.trim() || !form.phone.trim() || form.password.length < 8) {
@@ -228,7 +265,8 @@ export default function OwnerDashboardScreen({ navigation }) {
       : `+998${form.phone.replace(/\D/g, '')}`;
     setSaving(true);
     try {
-      const payload = { full_name: form.full_name.trim(), phone, password: form.password };
+      const usedPassword = form.password;
+      const payload = { full_name: form.full_name.trim(), phone, password: usedPassword };
       if (staffRole === 'teacher') {
         await ownerApi.createTeacher(center.id, { ...payload, subject: form.subject.trim() });
       } else {
@@ -236,7 +274,10 @@ export default function OwnerDashboardScreen({ navigation }) {
       }
       setAddOpen(false);
       setForm({ full_name: '', phone: '', password: '', subject: '' });
-      Alert.alert('Qo\'shildi', `Yangi ${roleLabelOf(staffRole).toLowerCase()} yaratildi.`);
+      Alert.alert(
+        "Xodim qo'shildi",
+        `Yangi ${roleLabelOf(staffRole).toLowerCase()} yaratildi.\n\nParol: ${usedPassword}\n\nXavfsizlik: parolni xodimga bering va birinchi kirishda o'zgartirishni so'rang.`,
+      );
       reload();
     } catch (e) {
       if (e?.response?.data?.upgrade_required) {
@@ -274,27 +315,54 @@ export default function OwnerDashboardScreen({ navigation }) {
     ]);
   };
 
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
   const confirmDelete = () => {
-    Alert.alert(
-      "Hisobni o'chirish",
-      "Hisobingiz butunlay o'chiriladi. Davom etasizmi?",
-      [
-        { text: 'Bekor qilish', style: 'cancel' },
-        {
-          text: "O'chirish",
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await authApi.deleteAccount();
-              await logout();
-              navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
-            } catch (e) {
-              Alert.alert('O\'chirilmadi', e?.response?.data?.detail || "Hisobni o'chirib bo'lmadi.");
-            }
-          },
-        },
-      ]
-    );
+    setDeletePassword('');
+    setDeleteOpen(true);
+  };
+
+  const submitDeleteAccount = async () => {
+    if (!deletePassword.trim()) {
+      Alert.alert('Parol kerak', "Hisobni o'chirish uchun joriy parolingizni kiriting.");
+      return;
+    }
+    setDeleteBusy(true);
+    try {
+      // Re-auth: parol to'g'riligini login orqali tekshiramiz (2FA yo'q bo'lsa).
+      // Backend totp talab qilsa, foydalanuvchi Profile → 2FA oqimidan o'tadi.
+      const phone = user?.phone;
+      if (phone) {
+        try {
+          const { data: loginData } = await authApi.login(phone, deletePassword.trim());
+          if (loginData?.requires_2fa) {
+            Alert.alert(
+              '2FA yoqilgan',
+              "Hisobni o'chirish uchun avval 2FA ni o'chiring yoki qo'llab-quvvatlashga murojaat qiling."
+            );
+            return;
+          }
+        } catch (e) {
+          const status = e?.response?.status;
+          if (status === 400 || status === 401) {
+            Alert.alert("Parol noto'g'ri", "Joriy parolni to'g'ri kiriting.");
+            return;
+          }
+          Alert.alert('Xatolik', "Parolni tekshirib bo'lmadi. Internetni tekshiring.");
+          return;
+        }
+      }
+      await authApi.deleteAccount();
+      setDeleteOpen(false);
+      await logout();
+      navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
+    } catch (e) {
+      Alert.alert("O'chirilmadi", e?.response?.data?.detail || "Hisobni o'chirib bo'lmadi.");
+    } finally {
+      setDeleteBusy(false);
+    }
   };
 
   const openEdit = () => {
@@ -619,7 +687,17 @@ export default function OwnerDashboardScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={styles.headerText}>
-            <Text style={styles.title}>{stats.name || center.name}</Text>
+            <TouchableOpacity
+              activeOpacity={centers.length > 1 ? 0.75 : 1}
+              disabled={centers.length <= 1}
+              onPress={() => setCenterPickerOpen(true)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+            >
+              <Text style={styles.title}>{stats.name || center.name}</Text>
+              {centers.length > 1 ? (
+                <Text style={{ color: colors.blue, fontFamily: FONTS.bold, fontSize: 13 }}>▾</Text>
+              ) : null}
+            </TouchableOpacity>
             <Text style={styles.subtitle}>Direktor paneli</Text>
           </View>
           <TouchableOpacity
@@ -959,6 +1037,54 @@ export default function OwnerDashboardScreen({ navigation }) {
 
       <TabBar items={OWNER_TABS} activeKey={tab} onPress={setTab} />
 
+      {/* Markaz tanlash (ko'p markaz egasi) — SelectModal string options ishlatadi */}
+      <SelectModal
+        visible={centerPickerOpen}
+        title="Markazni tanlang"
+        options={centers.map((c) => c.name || `Markaz #${c.id}`)}
+        selected={center?.name || (center ? `Markaz #${center.id}` : '')}
+        onSelect={(label) => {
+          const match = centers.find((c) => (c.name || `Markaz #${c.id}`) === label);
+          if (match) selectCenter(match.id);
+          else setCenterPickerOpen(false);
+        }}
+        onClose={() => setCenterPickerOpen(false)}
+      />
+
+      {/* Hisobni o'chirish — parol bilan re-auth */}
+      <Modal visible={deleteOpen} transparent animationType="fade" onRequestClose={() => setDeleteOpen(false)}>
+        <TouchableOpacity activeOpacity={1} style={styles.overlay} onPress={() => setDeleteOpen(false)} />
+        <View style={styles.sheet}>
+          <View style={styles.handle} />
+          <Text style={styles.sheetTitle}>Hisobni o'chirish</Text>
+          <Text style={{ color: colors.textSecondary, fontFamily: FONTS.semibold, fontSize: 13, marginBottom: 12, lineHeight: 18 }}>
+            Bu amalni ortga qaytarib bo'lmaydi. Davom etish uchun joriy parolingizni kiriting.
+          </Text>
+          <TextInput
+            style={styles.sheetInput}
+            placeholder="Joriy parol"
+            placeholderTextColor={colors.textMuted}
+            secureTextEntry
+            value={deletePassword}
+            onChangeText={setDeletePassword}
+            autoCapitalize="none"
+          />
+          <Button
+            title={deleteBusy ? 'O\'chirilmoqda…' : "Hisobni o'chirish"}
+            variant="danger"
+            height={50}
+            radius={13}
+            fontSize={15}
+            style={{ marginTop: 14 }}
+            disabled={deleteBusy}
+            onPress={submitDeleteAccount}
+          />
+          <TouchableOpacity activeOpacity={0.7} onPress={() => setDeleteOpen(false)}>
+            <Text style={styles.cancel}>Bekor qilish</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
       {/* Xodim qo'shish modal */}
       <Modal visible={addOpen} transparent animationType="slide" onRequestClose={() => setAddOpen(false)}>
         <TouchableOpacity activeOpacity={1} style={styles.overlay} onPress={() => setAddOpen(false)} />
@@ -985,6 +1111,18 @@ export default function OwnerDashboardScreen({ navigation }) {
             <TextInput style={[styles.sheetInput, styles.phoneInput]} placeholder="90 123 45 67" placeholderTextColor={colors.textMuted} keyboardType="phone-pad" value={form.phone} onChangeText={(v) => setField('phone', v)} />
           </View>
           <TextInput style={styles.sheetInput} placeholder="Parol (kamida 8 belgi)" placeholderTextColor={colors.textMuted} secureTextEntry value={form.password} onChangeText={(v) => setField('password', v)} />
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => setField('password', generateTempPassword())}
+            style={{ marginTop: 6, marginBottom: 4 }}
+          >
+            <Text style={{ color: colors.blue, fontFamily: FONTS.bold, fontSize: 13 }}>
+              Vaqtinchalik parol yaratish
+            </Text>
+          </TouchableOpacity>
+          <Text style={{ color: colors.textMuted, fontFamily: FONTS.semibold, fontSize: 11.5, lineHeight: 16, marginBottom: 4 }}>
+            Xavfsizlik: parolni xodimga xavfsiz yo‘l bilan bering va birinchi kirishda o‘zgartirishni so‘rang.
+          </Text>
           {staffRole === 'teacher' ? (
             <TextInput style={styles.sheetInput} placeholder="Fan (ixtiyoriy)" placeholderTextColor={colors.textMuted} value={form.subject} onChangeText={(v) => setField('subject', v)} />
           ) : null}

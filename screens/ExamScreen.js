@@ -9,6 +9,7 @@ import {
   Alert,
   AppState,
   ActivityIndicator,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../services/ThemeContext';
@@ -19,6 +20,7 @@ import ProgressBar from '../components/ProgressBar';
 import LoadingState from '../components/LoadingState';
 import ErrorState from '../components/ErrorState';
 import { studentApi } from '../services/api';
+import { getStableDeviceId } from '../services/deviceId';
 import { OlympyLogo, AlarmIcon, BackIcon, CheckIcon, WarningIcon } from '../components/icons/Icons';
 
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
@@ -62,16 +64,25 @@ export default function ExamScreen({ route, navigation }) {
   // savolga qaytilganda qayta so'rov ketmaydi.
   const cachedQuestionsRef = useRef({});
 
-  // Anti-cheat: ekrandan chiqishlar sonini va qurilma ID'sini kuzatamiz.
-  // Qurilma ID sessiya davomida barqaror — backend parallel-qurilma
-  // tekshiruvi shu ID orqali ishlaydi.
+  // Anti-cheat: ekrandan chiqishlar sonini va barqaror qurilma ID'sini kuzatamiz.
+  // device_id AsyncStorage'da saqlanadi — app qayta ochilganda ham bir xil.
   const tabEscapesRef = useRef(0);
   const answeredCountRef = useRef(0);
   const deviceIdRef = useRef(null);
-  if (!deviceIdRef.current) {
-    deviceIdRef.current = `rn-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
-  }
-  const MAX_TAB_ESCAPES = 3;
+  const leaveAllowedRef = useRef(false);
+  // Ekrandan chiqish limiti (AppState background/inactive).
+  // Pastroq = qattiqroq himoya; 2 — ogohlantirish + bitta imkoniyat.
+  const MAX_TAB_ESCAPES = 2;
+
+  useEffect(() => {
+    let cancelled = false;
+    getStableDeviceId().then((id) => {
+      if (!cancelled) deviceIdRef.current = id;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Timer sinxronizatsiyasi — har bir muvaffaqiyatli fetch javobidagi `session`
   // dan. `expires_at` bo'lsa qolgan vaqtni server soatiga qarab qayta hisoblaymiz
@@ -273,6 +284,9 @@ export default function ExamScreen({ route, navigation }) {
   const sendPing = useCallback(async () => {
     if (submittedRef.current) return;
     try {
+      if (!deviceIdRef.current) {
+        deviceIdRef.current = await getStableDeviceId();
+      }
       await studentApi.sessionPing({
         olympiad: olympiadId,
         answered_count: answeredCountRef.current,
@@ -317,7 +331,7 @@ export default function ExamScreen({ route, navigation }) {
   useEffect(() => {
     if (phase !== 'exam') return undefined;
     const sub = AppState.addEventListener('change', (next) => {
-      if (next === 'background') {
+      if (next === 'background' || next === 'inactive') {
         tabEscapesRef.current += 1;
         setEscapeCount(tabEscapesRef.current);
         sendPing();
@@ -328,6 +342,64 @@ export default function ExamScreen({ route, navigation }) {
     });
     return () => sub.remove();
   }, [phase, sendPing, reportEscape]);
+
+  // Imtihon paytida stack'dan chiqishni bloklash (orqaga / gesture / hardware back).
+  // Chiqish = tasdiq + yakuniy yuborish (yoki bekor).
+  const requestLeaveExam = useCallback(() => {
+    if (phase !== 'exam' || submittedRef.current) {
+      leaveAllowedRef.current = true;
+      navigation.goBack();
+      return;
+    }
+    Alert.alert(
+      'Imtihondan chiqish',
+      `${answeredCountRef.current}/${totalQuestions || '?'} savolga javob berdingiz. Chiqsangiz joriy javoblar yuboriladi va imtihon yakunlanadi.`,
+      [
+        { text: 'Davom etish', style: 'cancel' },
+        {
+          text: 'Yakunlash va chiqish',
+          style: 'destructive',
+          onPress: async () => {
+            await doSubmit();
+            leaveAllowedRef.current = true;
+            // doSubmit phase'ni result qiladi — foydalanuvchi "Yakunlash" dan chiqadi.
+            // Agar submit muvaffaqiyatsiz bo'lsa, submittedRef false qaytadi — chiqmaymiz.
+            if (submittedRef.current) {
+              // natija ekranida qolish — goBack qilmaymiz
+            }
+          },
+        },
+      ]
+    );
+  }, [phase, totalQuestions, doSubmit, navigation]);
+
+  useEffect(() => {
+    if (phase !== 'exam') return undefined;
+    const unsub = navigation.addListener('beforeRemove', (e) => {
+      if (leaveAllowedRef.current || submittedRef.current) return;
+      e.preventDefault();
+      requestLeaveExam();
+    });
+    return unsub;
+  }, [navigation, phase, requestLeaveExam]);
+
+  useEffect(() => {
+    if (phase !== 'exam') return undefined;
+    const onHardwareBack = () => {
+      requestLeaveExam();
+      return true; // default backni yutamiz
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onHardwareBack);
+    return () => sub.remove();
+  }, [phase, requestLeaveExam]);
+
+  // Stack gesture orqali chiqishni o'chirish (iOS swipe / Android predictive back).
+  useEffect(() => {
+    navigation.setOptions({
+      gestureEnabled: phase !== 'exam',
+      fullScreenGestureEnabled: phase !== 'exam',
+    });
+  }, [navigation, phase]);
 
   // Davriy ping (20 soniyada bir) — jonli nazorat "online" holatini yangilaydi.
   useEffect(() => {
@@ -435,7 +507,7 @@ export default function ExamScreen({ route, navigation }) {
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity activeOpacity={0.7} onPress={requestLeaveExam} style={styles.backBtn}>
           <BackIcon size={15} />
         </TouchableOpacity>
         <OlympyLogo size={22} strokeWidth={4} showHand={false} />

@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useCallback, useRef } from 'react';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { navigationRef } from '../services/navigationRef';
 import { useTheme } from '../services/ThemeContext';
+import { useAuth } from '../services/AuthContext';
+import { canAccessRoute, routeForUser, PUBLIC_ROUTES } from '../services/roles';
+import { linkingConfig } from '../services/linking';
 import SplashScreen from '../screens/SplashScreen';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
@@ -53,6 +56,11 @@ const Stack = createNativeStackNavigator();
 
 export default function RootNavigator() {
   const { colors, isDark } = useTheme();
+  const { user, initializing } = useAuth();
+  const userRef = useRef(user);
+  userRef.current = user;
+  const guardBusy = useRef(false);
+
   const navTheme = {
     ...(isDark ? DarkTheme : DefaultTheme),
     colors: {
@@ -64,8 +72,49 @@ export default function RootNavigator() {
       text: colors.text,
     },
   };
+
+  // Deep link / navigate chaqiruvlarida rol tekshiruvi.
+  // Unauthorized → Login yoki foydalanuvchining home shell'iga reset.
+  const enforceAccess = useCallback(() => {
+    if (initializing || guardBusy.current) return;
+    if (!navigationRef.isReady()) return;
+    const state = navigationRef.getRootState();
+    if (!state?.routes?.length) return;
+    const route = state.routes[state.index];
+    const name = route?.name;
+    if (!name) return;
+
+    const currentUser = userRef.current;
+    if (canAccessRoute(currentUser, name)) return;
+
+    guardBusy.current = true;
+    try {
+      if (!currentUser) {
+        if (!PUBLIC_ROUTES.has(name)) {
+          navigationRef.resetRoot({ index: 0, routes: [{ name: 'Login' }] });
+        }
+      } else {
+        const home = routeForUser(currentUser);
+        if (name !== home) {
+          navigationRef.resetRoot({ index: 0, routes: [{ name: home }] });
+        }
+      }
+    } finally {
+      // microtask — ketma-ket state o'zgarishlarida loopdan saqlaymiz
+      setTimeout(() => {
+        guardBusy.current = false;
+      }, 0);
+    }
+  }, [initializing]);
+
   return (
-    <NavigationContainer ref={navigationRef} theme={navTheme}>
+    <NavigationContainer
+      ref={navigationRef}
+      theme={navTheme}
+      linking={linkingConfig}
+      onReady={enforceAccess}
+      onStateChange={enforceAccess}
+    >
       <Stack.Navigator
         initialRouteName="Splash"
         screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
@@ -79,7 +128,7 @@ export default function RootNavigator() {
         <Stack.Screen name="StudentTabs" component={StudentTabs} />
         <Stack.Screen name="TeacherTabs" component={TeacherTabs} />
         <Stack.Screen name="ManagerTabs" component={ManagerTabs} />
-        <Stack.Screen name="Exam" component={ExamScreen} />
+        <Stack.Screen name="Exam" component={ExamScreen} options={{ gestureEnabled: false }} />
         <Stack.Screen name="MockExam" component={MockExamScreen} />
         <Stack.Screen name="PracticeRunner" component={PracticeRunnerScreen} />
         <Stack.Screen name="DailyQuestions" component={DailyQuestionsScreen} />

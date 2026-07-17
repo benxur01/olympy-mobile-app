@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../services/ThemeContext';
 import { FONTS } from '../constants/typography';
@@ -26,6 +26,12 @@ export default function OnboardingScreen({ navigation }) {
 
   const finish = async () => {
     if (saving) return;
+    if (!selected.length) {
+      // Fan tanlanmagan — foydalanuvchi baribir o'tishi mumkin, lekin
+      // backendga yubormaymiz (bo'sh onboarding).
+      navigation.reset({ index: 0, routes: [{ name: 'StudentTabs' }] });
+      return;
+    }
     setSaving(true);
     // Har bir tanlangan fan uchun daraja: Ingliz tili — CEFR, qolganlar —
     // Boshlang'ich/O'rta/Ilg'or (mathLevel bir xil to'plamdan).
@@ -34,15 +40,19 @@ export default function OnboardingScreen({ navigation }) {
       subjectLevels[s] = s === 'Ingliz tili' ? cefrLevel : mathLevel;
     });
     try {
-      if (selected.length) {
-        await authApi.completeOnboarding({ subjects: selected, subject_levels: subjectLevels });
-        await reloadMe().catch(() => {});
-      }
-    } catch (e) {
-      // Onboarding foydalanuvchini bloklamasligi kerak — xato bo'lsa ham davom.
-    } finally {
+      await authApi.completeOnboarding({ subjects: selected, subject_levels: subjectLevels });
+      await reloadMe().catch(() => {});
       setSaving(false);
       navigation.reset({ index: 0, routes: [{ name: 'StudentTabs' }] });
+    } catch (e) {
+      setSaving(false);
+      // Xato bo'lsa ham StudentTabs'ga o'tmaymiz — qayta urinish imkoni qolsin.
+      // (Aks holda onboarding_completed false qoladi va keyingi login yana shu
+      // ekranga qaytarardi — chalkash sikl.)
+      const detail =
+        e?.response?.data?.detail ||
+        "Saqlab bo'lmadi. Internetni tekshirib, qayta urinib ko'ring.";
+      Alert.alert('Xatolik', detail);
     }
   };
 

@@ -24,7 +24,7 @@ export const TEACHER_TABS = [
   { key: 'Arizalar', label: 'Arizalar', dot: true, icon: (color, active) => <InboxIcon size={23} color={color} filled={active} /> },
   { key: 'Oquvchilar', label: "O'quvchilar", icon: (color, active) => <UsersIcon size={23} color={color} filled={active} /> },
   { key: 'Savollar', label: 'Savollar', icon: (color, active) => <QuestionCircleIcon size={23} color={color} filled={active} /> },
-  { key: 'Baholash', label: 'Natijalar', icon: (color) => <BarsIcon size={23} color={color} /> },
+  { key: 'Baholash', label: 'Baholash', icon: (color) => <BarsIcon size={23} color={color} /> },
 ];
 
 // Menejer paneli tab'lari — o'qituvchidan kengroq: markaz statistikasi (Asosiy),

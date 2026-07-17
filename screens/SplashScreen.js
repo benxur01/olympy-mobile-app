@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../services/ThemeContext';
@@ -11,13 +11,31 @@ import { routeForUser } from '../services/roles';
 export default function SplashScreen({ navigation }) {
   const { colors, tints } = useTheme();
   const styles = makeStyles(colors, tints);
-  const { user, initializing } = useAuth();
+  const { user, initializing, sessionError, retrySession } = useAuth();
+  const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
     if (!initializing && user) {
       navigation.reset({ index: 0, routes: [{ name: routeForUser(user) }] });
     }
   }, [initializing, user, navigation]);
+
+  const onRetry = async () => {
+    setRetrying(true);
+    try {
+      const me = await retrySession();
+      if (me) {
+        navigation.reset({ index: 0, routes: [{ name: routeForUser(me) }] });
+      }
+    } catch (e) {
+      // sessionError AuthContext'da yangilanadi
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  // Token bor, lekin /me tarmoq xatosi — offline/retry UI (token tozalanmagan).
+  const showSessionRetry = !initializing && !user && !!sessionError;
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -30,7 +48,7 @@ export default function SplashScreen({ navigation }) {
           Olimpiadalar, reyting va sertifikatlar — bitta platformada.
         </Text>
       </View>
-      {initializing || user ? (
+      {initializing || (user && !sessionError) ? (
         // Sessiya tekshirilayotgan (yoki allaqachon login qilingan, hozir
         // rolga yo'naltirilayotgan) paytda "Kirish/Ro'yxatdan o'tish"
         // tugmalarini ko'rsatmaymiz — aks holda har safar ilova ochilganda
@@ -38,6 +56,32 @@ export default function SplashScreen({ navigation }) {
         // "birinchi marta kirish" ekrani ko'rinib ketardi.
         <View style={[styles.actions, styles.loadingBox]}>
           <ActivityIndicator color={colors.blue} />
+        </View>
+      ) : showSessionRetry ? (
+        <View style={styles.actions}>
+          <Text style={styles.retryHint}>
+            Serverga ulanib bo‘lmadi. Internetni tekshirib qayta urinib ko‘ring.
+          </Text>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={onRetry}
+            style={styles.primaryBtn}
+            disabled={retrying}
+          >
+            {retrying ? (
+              <ActivityIndicator color={colors.white} />
+            ) : (
+              <Text style={styles.primaryBtnText}>Qayta urinish</Text>
+            )}
+          </TouchableOpacity>
+          <Button
+            title="Boshqa hisob bilan kirish"
+            variant="dark"
+            height={54}
+            radius={14}
+            fontSize={16}
+            onPress={() => navigation.navigate('Login')}
+          />
         </View>
       ) : (
         <View style={styles.actions}>
@@ -139,5 +183,13 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     fontSize: 12.5,
     fontFamily: FONTS.semibold,
     color: colors.textMuted,
+  },
+  retryHint: {
+    textAlign: 'center',
+    fontSize: 13.5,
+    fontFamily: FONTS.semibold,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: 4,
   },
 });

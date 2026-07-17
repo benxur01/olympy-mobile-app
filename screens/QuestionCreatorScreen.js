@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert, Modal, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
@@ -47,6 +47,14 @@ export default function QuestionCreatorScreen({ navigation }) {
   const [generated, setGenerated] = useState([]);
   // Har bir generatsiya qilingan savol uchun rad etilganlar (indeks → true).
   const [rejected, setRejected] = useState({});
+  // PDF/Word AI extract polling bekor qilish (unmount).
+  const extractCancelledRef = useRef(false);
+  useEffect(() => {
+    extractCancelledRef.current = false;
+    return () => {
+      extractCancelledRef.current = true;
+    };
+  }, []);
 
   // Fayldan import (PDF / Word / Excel) holati. PDF va Word AI-preview'lari
   // AI generatsiya bilan bir xil ko'rib-tasdiqlash oqimini ishlatadi (importResult
@@ -222,9 +230,11 @@ export default function QuestionCreatorScreen({ navigation }) {
       fd.append('subject', subject);
       fd.append('difficulty', difficulty);
       fd.append('question_type', 'mcq');
+      const isCancelled = () => extractCancelledRef.current;
       const data = kind === 'pdf'
-        ? await teacherApi.extractPdfQuestions(fd)
-        : await teacherApi.extractWordAiQuestions(fd);
+        ? await teacherApi.extractPdfQuestions(fd, isCancelled)
+        : await teacherApi.extractWordAiQuestions(fd, isCancelled);
+      if (extractCancelledRef.current || data == null) return;
       const list = Array.isArray(data?.questions) ? data.questions : [];
       setImportResult(list);
       setImportWarning(

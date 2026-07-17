@@ -12,36 +12,185 @@ export function centerIdForUser(user) {
   return null;
 }
 
+/** Default (ustuvor) shell — login/splash yo'nalishi. */
 export function routeForUser(user) {
   if (!user) return 'Login';
+  const shells = availableShellsForUser(user);
+  if (shells.length) return shells[0].route;
+  return 'StudentTabs';
+}
+
+/**
+ * Foydalanuvchi almashtira oladigan panellar (multi-role).
+ * Tartib = ustuvorlik (birinchi = default home).
+ */
+export function availableShellsForUser(user) {
+  if (!user) return [];
   const roles = user.roles || [];
   const has = (r) => roles.includes(r);
-  if (user.is_platform_admin || has('platform_admin')) return 'Admin';
-  if (has('owner') || has('director')) return 'OwnerDashboard';
-  // Menejer (markaz menejeri) o'qituvchidan kengroq alohida panelga tushadi:
-  // markaz statistikasi, o'quvchi boshqaruvi, natijalar/analitika, nazorat.
-  // Bir foydalanuvchida ham manager, ham teacher roli bo'lsa — kengroq
-  // manager panelini ustun qo'yamiz.
-  if (has('manager')) return 'ManagerTabs';
-  if (has('teacher')) return 'TeacherTabs';
-  if (has('parent')) return 'Parent';
-  // Markazga a'zolik arizasi bergan, ammo hali tasdiqlanmagan (yoki rad etilgan)
-  // foydalanuvchi: `roles` (faqat tasdiqlangan rollar) bo'sh, biroq
-  // `roles_detail`da kutilayotgan/rad etilgan ariza bor. Ularni bo'sh
-  // StudentTabs o'rniga bloklovchi "ariza ko'rib chiqilmoqda" ekraniga
-  // yo'naltiramiz. Muhim: markazsiz to'g'ridan-to'g'ri ro'yxatdan o'tgan
-  // yangi o'quvchida `roles_detail` umuman bo'sh bo'ladi — u bu tekshiruvdan
-  // o'tib, quyidagi Onboarding oqimida qoladi.
+  const shells = [];
+
+  if (user.is_platform_admin || has('platform_admin')) {
+    shells.push({ key: 'admin', label: 'Admin panel', route: 'Admin' });
+  }
+  if (has('owner') || has('director')) {
+    shells.push({ key: 'owner', label: 'Direktor paneli', route: 'OwnerDashboard' });
+  }
+  if (has('manager')) {
+    shells.push({ key: 'manager', label: 'Menejer paneli', route: 'ManagerTabs' });
+  }
+  if (has('teacher')) {
+    shells.push({ key: 'teacher', label: "O'qituvchi paneli", route: 'TeacherTabs' });
+  }
+  if (has('parent')) {
+    shells.push({ key: 'parent', label: 'Ota-ona paneli', route: 'Parent' });
+  }
+
+  // Pending / onboarding / student
   if (roles.length === 0) {
     const rd = user.roles_detail || {};
     const awaitingReview = Object.values(rd).some(
       (d) => d && (d.status === 'pending' || d.status === 'rejected')
     );
-    if (awaitingReview) return 'PendingAccess';
+    if (awaitingReview) {
+      shells.push({ key: 'pending', label: 'Ariza holati', route: 'PendingAccess' });
+      return shells;
+    }
   }
-  // Yangi ro'yxatdan o'tgan o'quvchi (onboarding tugallanmagan) avval fan/daraja
-  // tanlash ekraniga tushadi, keyin StudentTabs'ga o'tadi. `onboarding_completed`
-  // /api/me/ javobida keladi; false yoki mavjud bo'lmasa — Onboarding.
-  if (user.onboarding_completed === false) return 'Onboarding';
-  return 'StudentTabs';
+  if (user.onboarding_completed === false && (has('student') || roles.length === 0)) {
+    shells.push({ key: 'onboarding', label: 'Boshlash', route: 'Onboarding' });
+    return shells;
+  }
+  // Student shell — student roli yoki boshqa rollar bilan birga
+  if (has('student') || shells.length === 0) {
+    shells.push({ key: 'student', label: "O'quvchi paneli", route: 'StudentTabs' });
+  }
+
+  return shells;
+}
+
+/** Public (auth talab qilmaydigan) stack route nomlari. */
+export const PUBLIC_ROUTES = new Set([
+  'Splash',
+  'Login',
+  'Register',
+  'ForgotPassword',
+  'CertVerify',
+]);
+
+/**
+ * Authenticated bo'lgandan keyin ham ochiq qoladigan umumiy ekranlar
+ * (barcha rollar).
+ */
+const SHARED_AUTH_ROUTES = new Set([
+  'Profile',
+  'ChangePassword',
+  'TwoFactor',
+  'Notifications',
+  'AiChat',
+  'CertVerify',
+]);
+
+const SHELL_ROUTES = {
+  Admin: [
+    'Admin',
+    'AdminAnalytics',
+    'AdminSupport',
+    'AdminSubjects',
+  ],
+  OwnerDashboard: [
+    'OwnerDashboard',
+    'OwnerPremium',
+    'OwnerShop',
+    'CenterRanking',
+    'TeacherOlympiads',
+    'CreateOlympiad',
+    'QuestionCreator',
+    'EssayGrading',
+    'CodeReview',
+    'QuestionDifficulty',
+    'Proctoring',
+    'Premium',
+    'Shop',
+    'Leaderboard',
+  ],
+  ManagerTabs: [
+    'ManagerTabs',
+    'TeacherOlympiads',
+    'CreateOlympiad',
+    'QuestionCreator',
+    'EssayGrading',
+    'CodeReview',
+    'QuestionDifficulty',
+    'CenterRanking',
+    'OwnerPremium',
+    'OwnerShop',
+  ],
+  TeacherTabs: [
+    'TeacherTabs',
+    'TeacherOlympiads',
+    'CreateOlympiad',
+    'QuestionCreator',
+    'EssayGrading',
+    'CodeReview',
+    'QuestionDifficulty',
+  ],
+  Parent: ['Parent'],
+  PendingAccess: ['PendingAccess'],
+  Onboarding: ['Onboarding', 'StudentTabs'],
+  StudentTabs: [
+    'StudentTabs',
+    'Onboarding',
+    'PendingAccess',
+    'Exam',
+    'MockExam',
+    'PracticeRunner',
+    'DailyQuestions',
+    'Leaderboard',
+    'Shop',
+    'Premium',
+    'Analytics',
+    'Progress',
+    'Mistakes',
+    'JoinCenter',
+    'CenterRanking',
+    'DuelList',
+    'DuelInvite',
+    'DuelPlay',
+    'DuelResult',
+  ],
+};
+
+/**
+ * Rol bo'yicha ruxsat etilgan asosiy shell + uning stack ekranlari.
+ * Multi-role: barcha panellar birlashtiriladi (switcher ishlashi uchun).
+ */
+export function allowedRoutesForUser(user) {
+  if (!user) return new Set(PUBLIC_ROUTES);
+  const allowed = new Set(PUBLIC_ROUTES);
+  SHARED_AUTH_ROUTES.forEach((r) => allowed.add(r));
+
+  const shells = availableShellsForUser(user);
+  shells.forEach((s) => {
+    const routes = SHELL_ROUTES[s.route] || [s.route];
+    routes.forEach((r) => allowed.add(r));
+  });
+
+  // Hech narsa topilmasa — student minimal
+  if (shells.length === 0) {
+    SHELL_ROUTES.StudentTabs.forEach((r) => allowed.add(r));
+  }
+
+  return allowed;
+}
+
+/**
+ * Berilgan route foydalanuvchiga ruxsat etilganmi.
+ * Auth talab qilinadigan route'da user yo'q bo'lsa — false.
+ */
+export function canAccessRoute(user, routeName) {
+  if (!routeName) return false;
+  if (PUBLIC_ROUTES.has(routeName)) return true;
+  if (!user) return false;
+  return allowedRoutesForUser(user).has(routeName);
 }

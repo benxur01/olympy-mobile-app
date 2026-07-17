@@ -116,26 +116,30 @@ export default function RegisterScreen({ navigation }) {
     }
   };
 
-  // Step 2 tasdiqlash: agar 6 xonali kod kiritilgan bo'lsa — avval verifyOtp,
-  // so'ng ro'yxatdan o'tkazamiz. Kod kiritilmagan bo'lsa (bot kontakt-tasdiq
-  // oqimi) — to'g'ridan-to'g'ri ro'yxatdan o'tishni yakunlaymiz (fallback).
+  // Step 2 tasdiqlash: telefon OTP majburiy. verifyOtp muvaffaqiyatli
+  // bo'lmaguncha ro'yxatdan o'tishga ruxsat berilmaydi (client-side bypass yo'q).
+  // Backend ham tasdiqlanmagan telefonni rad etishi kerak.
   const submitStep2 = async () => {
-    const code = otp.join('');
-    if (code.length === 6 && !otpVerified) {
-      setOtpVerifying(true);
-      setError('');
-      try {
-        await authApi.verifyOtp(fullPhone(), code);
-        setOtpVerified(true);
-        setOtpVerifying(false);
-        await afterVerify();
-      } catch (e) {
-        setOtpVerifying(false);
-        setError(e.response?.data?.detail || "Kod noto'g'ri yoki muddati o'tgan. Qayta urinib ko'ring.");
-      }
+    if (otpVerified) {
+      await afterVerify();
       return;
     }
-    afterVerify();
+    const code = otp.join('');
+    if (code.length !== 6) {
+      setError('Telegram botdan kelgan 6 xonali kodni kiriting.');
+      return;
+    }
+    setOtpVerifying(true);
+    setError('');
+    try {
+      await authApi.verifyOtp(fullPhone(), code);
+      setOtpVerified(true);
+      setOtpVerifying(false);
+      await afterVerify();
+    } catch (e) {
+      setOtpVerifying(false);
+      setError(e.response?.data?.detail || "Kod noto'g'ri yoki muddati o'tgan. Qayta urinib ko'ring.");
+    }
   };
 
   // Telefon tasdiqlangach: o'quvchi to'g'ridan-to'g'ri ro'yxatdan o'tadi;

@@ -111,6 +111,9 @@ export default function TabBar({ items, activeKey, onPress, style }) {
                 onPress={() => onPress && onPress(item.key)}
                 onLayout={handleItemLayout(index)}
                 style={styles.item}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={item.label}
               >
                 <View style={styles.iconBox}>
                   {item.icon(color, active)}

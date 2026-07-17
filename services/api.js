@@ -32,6 +32,37 @@ client.interceptors.request.use((config) => {
   return config;
 });
 
+// Parallel 401'lar bir vaqtda bitta refresh so'rovini ishlatadi (single-flight).
+// Aks holda rotating refresh token birinchi muvaffaqiyatli so'rovdan keyin
+// qolganlarini invalid qilib mass-logout keltirishi mumkin.
+let refreshPromise = null;
+
+async function refreshAccessToken() {
+  if (!refreshToken) throw new Error('no_refresh_token');
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    const { data } = await axios.post(
+      `${API_BASE_URL}/api/auth/token/refresh/`,
+      { refresh: refreshToken },
+      { timeout: API_TIMEOUT }
+    );
+    const newToken = data.token || data.access;
+    const newRefresh = data.refresh || refreshToken;
+    setTokens({ token: newToken, refresh: newRefresh });
+    if (authHandlers.onRefresh) {
+      try {
+        authHandlers.onRefresh(newToken, newRefresh);
+      } catch (e) {
+        // storage yozish xatosi auth oqimini to'xtatmasin
+      }
+    }
+    return newToken;
+  })().finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
+}
+
 client.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -39,20 +70,9 @@ client.interceptors.response.use(
     if (error.response?.status === 401 && refreshToken && original && !original._retry) {
       original._retry = true;
       try {
-        const { data } = await axios.post(
-          `${API_BASE_URL}/api/auth/token/refresh/`,
-          { refresh: refreshToken },
-          { timeout: API_TIMEOUT }
-        );
-        const newToken = data.token || data.access;
-        const newRefresh = data.refresh || refreshToken;
-        setTokens({ token: newToken, refresh: newRefresh });
-        if (authHandlers.onRefresh) {
-          try {
-            authHandlers.onRefresh(newToken, newRefresh);
-          } catch (e) {}
-        }
-        original.headers.Authorization = `Bearer ${accessToken}`;
+        const newToken = await refreshAccessToken();
+        original.headers = original.headers || {};
+        original.headers.Authorization = `Bearer ${newToken || accessToken}`;
         return client(original);
       } catch (refreshError) {
         // Refresh token ham yaroqsiz — sessiyani tozalab, foydalanuvchini
@@ -61,7 +81,9 @@ client.interceptors.response.use(
         if (authHandlers.onFailure) {
           try {
             authHandlers.onFailure();
-          } catch (e) {}
+          } catch (e) {
+            // ignore
+          }
         }
       }
     }
@@ -77,7 +99,10 @@ export const authApi = {
   logout: () => client.post('/api/auth/logout/'),
   startTelegramVerification: (phone) =>
     client.post('/api/auth/phone/start-telegram-verification/', { phone }),
-  verifyOtp: (phone, code) => client.post('/api/auth/phone/verify-otp/', { phone, code }),
+  // purpose: backend registration OTP ni password_reset bilan aralashtirmaslik
+  // uchun (verify_otp purpose filtri). Default — registration.
+  verifyOtp: (phone, code, purpose = 'registration') =>
+    client.post('/api/auth/phone/verify-otp/', { phone, otp: code, purpose }),
   // Ro'yxatdan o'tgandan keyin (Sozlamalar'dan) Telegram akkauntini ulash —
   // bildirishnomalar (arizalar, olimpiada e'lonlari) Telegram orqali kelishi
   // uchun. Javob: { telegram_deep_link, bot_username }. Bot orqali ulangach
@@ -414,7 +439,9 @@ export const teacherApi = {
   // key bilan va center/subject/difficulty/question_type matn maydonlari bilan
   // keladi. Muvaffaqiyatda { status:'COMPLETED', questions, provider, warning,
   // ... } qaytadi. Xato/timeout'da throw qiladi.
-  extractPdfQuestions: async (formData) => {
+  // `isCancelled` — ixtiyoriy () => boolean; true bo'lsa (unmount) poll to'xtaydi.
+  extractPdfQuestions: async (formData, isCancelled) => {
+    const cancelled = () => (typeof isCancelled === 'function' ? isCancelled() : false);
     const { data: startData } = await client.post('/api/questions/pdf-preview/', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
@@ -423,6 +450,7 @@ export const teacherApi = {
     if (!taskId) return startData;
     for (let i = 0; i < 150; i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 2000));
+      if (cancelled()) return null;
       const { data: state } = await client.get(`/api/questions/pdf-preview/${taskId}/status/`);
       if (state?.status === 'COMPLETED') return state;
       if (state?.status === 'FAILED') {
@@ -434,7 +462,8 @@ export const teacherApi = {
   // Word (.docx) matnidan AI yordamida savol ajratish. extractPdfQuestions bilan
   // bir xil oqim; fayl `word` key bilan word-ai-preview/ ga yuboriladi, status
   // esa AYNAN pdf-preview/<task_id>/status/ orqali o'qiladi (backend keshi bir xil).
-  extractWordAiQuestions: async (formData) => {
+  extractWordAiQuestions: async (formData, isCancelled) => {
+    const cancelled = () => (typeof isCancelled === 'function' ? isCancelled() : false);
     const { data: startData } = await client.post('/api/questions/word-ai-preview/', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
@@ -442,6 +471,7 @@ export const teacherApi = {
     if (!taskId) return startData;
     for (let i = 0; i < 150; i += 1) {
       await new Promise((resolve) => setTimeout(resolve, 2000));
+      if (cancelled()) return null;
       const { data: state } = await client.get(`/api/questions/pdf-preview/${taskId}/status/`);
       if (state?.status === 'COMPLETED') return state;
       if (state?.status === 'FAILED') {

@@ -94,12 +94,15 @@ export default function StudentHomeScreen({ navigation }) {
   const tabBarSpacing = useTabBarSpacing();
   const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
-  // Bir soniyalik "soat" — barcha countdown'larni bitta interval boshqaradi.
+  // Countdown uchun soat — faqat kunlik maqsad yoki tadbir timer kerak bo'lganda
+  // 1 Hz interval yoqiladi (butun Home daraxti doimiy re-render bo'lmasin).
   const [now, setNow] = useState(Date.now());
+  const [needClock, setNeedClock] = useState(false);
   useEffect(() => {
+    if (!needClock) return undefined;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [needClock]);
   const { data, loading, refreshing, error, reload, refresh } = useFetch(async () => {
     const [stats, streak, olympiads, dailyGoal, notifs] = await Promise.all([
       studentApi.myStats().then((r) => r.data).catch(() => null),
@@ -203,6 +206,13 @@ export default function StudentHomeScreen({ navigation }) {
     return null;
   })();
   const eventRemainSec = eventEndTs != null ? Math.max(0, Math.floor((eventEndTs - now) / 1000)) : null;
+
+  useEffect(() => {
+    const wantsClock =
+      (goalResetTs && !Number.isNaN(goalResetTs) && goalRemainSec > 0) ||
+      (eventEndTs != null && eventRemainSec > 0);
+    setNeedClock(!!wantsClock);
+  }, [goalResetTs, goalRemainSec, eventEndTs, eventRemainSec]);
 
   const confirmLogout = async () => {
     await logout();

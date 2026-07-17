@@ -16,6 +16,7 @@ import useFetch from '../services/useFetch';
 import { studentApi, authApi } from '../services/api';
 import { PRIVACY_POLICY_URL, API_BASE_URL, WEB_APP_URL } from '../services/config';
 import { useAuth } from '../services/AuthContext';
+import { availableShellsForUser } from '../services/roles';
 import {
   ProfileBadgeIcon,
   MedalIcon,
@@ -407,28 +408,53 @@ export default function ProfileScreen({ navigation }) {
     );
   };
 
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
+
   const confirmDelete = () => {
-    Alert.alert(
-      'Hisobni o\'chirish',
-      "Hisobingiz va barcha ma'lumotlaringiz butunlay o'chiriladi. Bu amalni ortga qaytarib bo'lmaydi. Davom etasizmi?",
-      [
-        { text: 'Bekor qilish', style: 'cancel' },
-        {
-          text: "O'chirish",
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await authApi.deleteAccount();
-              await logout();
-              navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
-            } catch (e) {
-              const detail = e?.response?.data?.detail;
-              Alert.alert('O\'chirilmadi', detail || "Hisobni o'chirib bo'lmadi. Keyinroq urinib ko'ring.");
-            }
-          },
-        },
-      ]
-    );
+    setDeletePassword('');
+    setDeleteOpen(true);
+  };
+
+  const submitDeleteAccount = async () => {
+    if (!deletePassword.trim()) {
+      Alert.alert('Parol kerak', "Hisobni o'chirish uchun joriy parolingizni kiriting.");
+      return;
+    }
+    setDeleteBusy(true);
+    try {
+      const phone = user?.phone;
+      if (phone) {
+        try {
+          const { data: loginData } = await authApi.login(phone, deletePassword.trim());
+          if (loginData?.requires_2fa) {
+            Alert.alert(
+              '2FA yoqilgan',
+              "Hisobni o'chirish uchun avval 2FA ni o'chiring yoki qo'llab-quvvatlashga murojaat qiling."
+            );
+            return;
+          }
+        } catch (e) {
+          const status = e?.response?.status;
+          if (status === 400 || status === 401) {
+            Alert.alert("Parol noto'g'ri", "Joriy parolni to'g'ri kiriting.");
+            return;
+          }
+          Alert.alert('Xatolik', "Parolni tekshirib bo'lmadi. Internetni tekshiring.");
+          return;
+        }
+      }
+      await authApi.deleteAccount();
+      setDeleteOpen(false);
+      await logout();
+      navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      Alert.alert("O'chirilmadi", detail || "Hisobni o'chirib bo'lmadi. Keyinroq urinib ko'ring.");
+    } finally {
+      setDeleteBusy(false);
+    }
   };
 
   return (
@@ -546,6 +572,25 @@ export default function ProfileScreen({ navigation }) {
                 style={styles.themeSegmented}
               />
             </Card>
+            {/* Multi-role: bir nechta panel bo'lsa almashtirish */}
+            {availableShellsForUser(user).length > 1
+              ? availableShellsForUser(user).map((shell) => (
+                  <TouchableOpacity
+                    key={shell.key}
+                    activeOpacity={0.85}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${shell.label} ga o'tish`}
+                    onPress={() =>
+                      navigation.reset({ index: 0, routes: [{ name: shell.route }] })
+                    }
+                  >
+                    <Card style={styles.settingRow}>
+                      <Text style={styles.settingText}>{shell.label}</Text>
+                      <Text style={styles.settingArrow}>›</Text>
+                    </Card>
+                  </TouchableOpacity>
+                ))
+              : null}
             {isStudent && !isPremium ? (
               <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('Premium')}>
                 <Card style={styles.settingRow}>
@@ -694,6 +739,54 @@ export default function ProfileScreen({ navigation }) {
               fontSize={14}
               style={styles.certCloseBtn}
               onPress={() => setCertImage(null)}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={deleteOpen} transparent animationType="fade" onRequestClose={() => setDeleteOpen(false)}>
+        <View style={styles.certModalWrap}>
+          <View style={styles.certModalCard}>
+            <Text style={[styles.name, { marginBottom: 8 }]}>Hisobni o'chirish</Text>
+            <Text style={styles.certHint}>
+              Bu amalni ortga qaytarib bo'lmaydi. Davom etish uchun joriy parolingizni kiriting.
+            </Text>
+            <TextInput
+              style={{
+                borderWidth: 1,
+                borderColor: colors.borderStrong,
+                borderRadius: 12,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                color: colors.text,
+                fontFamily: FONTS.semibold,
+                marginBottom: 12,
+                backgroundColor: colors.surfaceDeep,
+              }}
+              placeholder="Joriy parol"
+              placeholderTextColor={colors.textMuted}
+              secureTextEntry
+              value={deletePassword}
+              onChangeText={setDeletePassword}
+              autoCapitalize="none"
+            />
+            <Button
+              title={deleteBusy ? "O'chirilmoqda…" : "Hisobni o'chirish"}
+              variant="danger"
+              height={48}
+              radius={12}
+              fontSize={14}
+              disabled={deleteBusy}
+              onPress={submitDeleteAccount}
+            />
+            <Button
+              title="Bekor qilish"
+              variant="dark"
+              height={46}
+              radius={12}
+              fontSize={14}
+              style={styles.certCloseBtn}
+              onPress={() => setDeleteOpen(false)}
             />
           </View>
         </View>

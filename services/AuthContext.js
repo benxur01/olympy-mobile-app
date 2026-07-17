@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authApi, notificationsApi, setTokens, setAuthHandlers } from './api';
 import { resetToLogin } from './navigationRef';
 import { registerForPushNotificationsAsync } from './pushNotifications';
+import { secureGet, secureSet, secureDelete } from './secureStorage';
+import { devLog } from './logger';
 
 const TOKEN_KEY = 'olympy_token';
 const REFRESH_KEY = 'olympy_refresh';
@@ -12,18 +13,21 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [initializing, setInitializing] = useState(true);
+  // Tarmoq xatosi bilan sessiya tiklanmasa — token saqlanib, foydalanuvchi
+  // offline/retry holatini ko'rishi mumkin (butunlay logout emas).
+  const [sessionError, setSessionError] = useState(null);
 
   const persistTokens = async (token, refresh) => {
     setTokens({ token, refresh });
     if (token) {
-      await AsyncStorage.setItem(TOKEN_KEY, token);
+      await secureSet(TOKEN_KEY, token);
     } else {
-      await AsyncStorage.removeItem(TOKEN_KEY);
+      await secureDelete(TOKEN_KEY);
     }
     if (refresh) {
-      await AsyncStorage.setItem(REFRESH_KEY, refresh);
+      await secureSet(REFRESH_KEY, refresh);
     } else {
-      await AsyncStorage.removeItem(REFRESH_KEY);
+      await secureDelete(REFRESH_KEY);
     }
   };
 
@@ -31,6 +35,7 @@ export function AuthProvider({ children }) {
     const { data } = await authApi.me();
     const me = data?.user || data;
     setUser(me);
+    setSessionError(null);
     return me;
   }, []);
 
@@ -45,22 +50,23 @@ export function AuthProvider({ children }) {
         await notificationsApi.subscribePush(token);
       }
     } catch (e) {
-      console.log('[push] Tokenni ro\'yxatdan o\'tkazib bo\'lmadi:', e?.message || e);
+      devLog('[push] Tokenni ro\'yxatdan o\'tkazib bo\'lmadi:', e?.message || e);
     }
   }, []);
 
-  // Axios interceptor bilan bog'lash: token jimgina yangilanganda diskка
+  // Axios interceptor bilan bog'lash: token jimgina yangilanganda diskka
   // saqlaymiz; refresh butunlay muvaffaqiyatsiz bo'lsa sessiyani tozalab
   // Login'ga qaytaramiz (item 17).
   useEffect(() => {
     setAuthHandlers({
       onRefresh: (token, refresh) => {
-        if (token) AsyncStorage.setItem(TOKEN_KEY, token).catch(() => {});
-        if (refresh) AsyncStorage.setItem(REFRESH_KEY, refresh).catch(() => {});
+        if (token) secureSet(TOKEN_KEY, token).catch(() => {});
+        if (refresh) secureSet(REFRESH_KEY, refresh).catch(() => {});
       },
       onFailure: async () => {
         await persistTokens(null, null);
         setUser(null);
+        setSessionError(null);
         resetToLogin();
       },
     });
@@ -70,20 +76,62 @@ export function AuthProvider({ children }) {
     (async () => {
       try {
         const [token, refresh] = await Promise.all([
-          AsyncStorage.getItem(TOKEN_KEY),
-          AsyncStorage.getItem(REFRESH_KEY),
+          secureGet(TOKEN_KEY),
+          secureGet(REFRESH_KEY),
         ]);
         if (token) {
           setTokens({ token, refresh });
-          await loadMe();
-          registerPushToken();
+          try {
+            await loadMe();
+            registerPushToken();
+          } catch (e) {
+            const status = e?.response?.status;
+            // 401/403 — token yaroqsiz: tozalaymiz.
+            if (status === 401 || status === 403) {
+              await persistTokens(null, null);
+              setUser(null);
+              setSessionError(null);
+            } else {
+              // Tarmoq / 5xx: tokenni diskda qoldiramiz, keyinroq qayta urinish.
+              setTokens({ token, refresh });
+              setUser(null);
+              setSessionError(e);
+            }
+          }
         }
       } catch (e) {
+        // Storage o'qish xatosi — sessiyasiz davom.
         setTokens({});
+        setSessionError(null);
       } finally {
         setInitializing(false);
       }
     })();
+  }, [loadMe, registerPushToken]);
+
+  const retrySession = useCallback(async () => {
+    const token = await secureGet(TOKEN_KEY);
+    const refresh = await secureGet(REFRESH_KEY);
+    if (!token) {
+      setSessionError(null);
+      return null;
+    }
+    setTokens({ token, refresh });
+    try {
+      const me = await loadMe();
+      registerPushToken();
+      return me;
+    } catch (e) {
+      const status = e?.response?.status;
+      if (status === 401 || status === 403) {
+        await persistTokens(null, null);
+        setUser(null);
+        setSessionError(null);
+      } else {
+        setSessionError(e);
+      }
+      throw e;
+    }
   }, [loadMe, registerPushToken]);
 
   const login = async (phone, password, totpCode) => {
@@ -122,9 +170,12 @@ export function AuthProvider({ children }) {
   const logout = async () => {
     try {
       await authApi.logout();
-    } catch (e) {}
+    } catch (e) {
+      // offline logout — baribir tozalaymiz
+    }
     await persistTokens(null, null);
     setUser(null);
+    setSessionError(null);
   };
 
   // Parol o'zgartirilganda backend yangi JWT juftligini qaytaradi (eski
@@ -137,7 +188,18 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, initializing, login, register, registerOrganization, logout, reloadMe: loadMe, applyAuthTokens }}
+      value={{
+        user,
+        initializing,
+        sessionError,
+        login,
+        register,
+        registerOrganization,
+        logout,
+        reloadMe: loadMe,
+        retrySession,
+        applyAuthTokens,
+      }}
     >
       {children}
     </AuthContext.Provider>

@@ -49,12 +49,14 @@ export default function ProctoringScreen() {
   // bo'sh qaytaradi — bunday holda faol tadbirni markaz statistikasidan topamiz.
   const isManager = ['manager', 'owner', 'director'].some((r) => (user?.roles || []).includes(r));
   const [query, setQuery] = useState('');
-  // Faol tadbir countdown'i uchun bir soniyalik soat.
+  // Faol tadbir countdown'i uchun soat — faqat active topilgach yoqiladi.
   const [now, setNow] = useState(Date.now());
+  const [clockOn, setClockOn] = useState(false);
   useEffect(() => {
+    if (!clockOn) return undefined;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [clockOn]);
   const { data, loading, refreshing, error, reload, refresh } = useFetch(async () => {
     const olyData = await teacherApi.myOlympiads().then((r) => r.data).catch(() => null);
     const olympiads = olyData === null ? [] : asResults(olyData);
@@ -84,6 +86,9 @@ export default function ProctoringScreen() {
   }, [isManager]);
 
   const active = data?.active || null;
+  useEffect(() => {
+    setClockOn(!!active);
+  }, [active]);
   const students = data?.students || [];
 
   // Faol tadbir tugashigacha qolgan vaqt (expires_at / end_datetime, aks holda
