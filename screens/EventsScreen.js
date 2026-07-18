@@ -13,7 +13,7 @@ import ErrorState from '../components/ErrorState';
 import EmptyState from '../components/EmptyState';
 import useFetch from '../services/useFetch';
 import { studentApi } from '../services/api';
-import { CalendarIcon, ClockIcon, UsersIcon } from '../components/icons/Icons';
+import { CalendarIcon, ClockIcon, UsersIcon, BuildingIcon } from '../components/icons/Icons';
 
 const asArray = (data) => (Array.isArray(data) ? data : data?.results || data?.entries || []);
 
@@ -36,7 +36,7 @@ const makeSTATUS = (colors, tints) => ({
   scheduled: { label: 'Kutilmoqda', color: colors.orange, bg: tints.orange14 },
 });
 
-function EventCard({ event, onEnter }) {
+function EventCard({ event, centerName, onEnter }) {
   const { colors, tints } = useTheme();
   const styles = makeStyles(colors, tints);
   const STATUS = makeSTATUS(colors, tints);
@@ -51,6 +51,14 @@ function EventCard({ event, onEnter }) {
         ) : null}
         <Badge label={st.label} color={st.color} background={st.bg} borderColor={st.border} size={11} />
       </View>
+      {centerName ? (
+        <View style={styles.creatorRow}>
+          <View style={styles.metaItem}>
+            <BuildingIcon size={12} color={colors.textMuted} />
+            <Text style={styles.metaText} numberOfLines={1}>{centerName}</Text>
+          </View>
+        </View>
+      ) : null}
       <Text style={styles.eventTitle}>{event.title || 'Nomsiz tadbir'}</Text>
       <View style={styles.eventMeta}>
         <View style={styles.metaItem}>
@@ -70,7 +78,7 @@ function EventCard({ event, onEnter }) {
       ) : null}
       {isActive ? (
         <Button
-          title="Kirish"
+          title="Start"
           height={46}
           radius={12}
           fontSize={14.5}
@@ -101,6 +109,20 @@ export default function EventsScreen({ navigation }) {
     () => studentApi.olympiads().then((r) => asArray(r.data)),
     []
   );
+  // Tadbir obyekti faqat `center` (raqamli ID) qaytaradi, markaz nomini emas —
+  // qaysi tashkilot tomonidan yaratilganini ko'rsatish uchun markazlar
+  // ro'yxatini (PUBLIC endpoint) alohida olib, ID → nom xaritasini quramiz.
+  const { data: centersData } = useFetch(
+    () => studentApi.centersList().then((r) => (Array.isArray(r.data) ? r.data : r.data?.results || [])),
+    []
+  );
+  const centerNameById = useMemo(() => {
+    const map = {};
+    (centersData || []).forEach((c) => {
+      if (c?.id != null) map[c.id] = c.name;
+    });
+    return map;
+  }, [centersData]);
 
   const events = useMemo(() => {
     const list = data || [];
@@ -116,7 +138,7 @@ export default function EventsScreen({ navigation }) {
     return [...filtered].sort((a, b) => rank(a) - rank(b));
   }, [data, query]);
 
-  if (loading) return <LoadingState message="Tadbirlar yuklanmoqda…" />;
+  if (loading) return <LoadingState message="Musobaqalar yuklanmoqda…" />;
   if (error && !data) return <ErrorState onRetry={reload} />;
 
   const enter = (event) =>
@@ -134,7 +156,7 @@ export default function EventsScreen({ navigation }) {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.blue} />}
       >
         <View style={styles.header}>
-          <Text style={styles.title}>Tadbirlar</Text>
+          <Text style={styles.title}>Musobaqalar</Text>
           <Text style={styles.subtitle}>Olimpiada va musobaqalar</Text>
         </View>
         <SearchBar
@@ -148,7 +170,7 @@ export default function EventsScreen({ navigation }) {
           <EmptyState
             compact
             icon={<CalendarIcon size={24} color={colors.blueLight} />}
-            title="Tadbirlar yo'q"
+            title="Musobaqalar yo'q"
             message={
               query
                 ? "Qidiruv bo'yicha tadbir topilmadi."
@@ -158,7 +180,12 @@ export default function EventsScreen({ navigation }) {
         ) : (
           <View style={styles.list}>
             {events.map((event) => (
-              <EventCard key={event.id} event={event} onEnter={enter} />
+              <EventCard
+                key={event.id}
+                event={event}
+                centerName={event.center_name || centerNameById[event.center]}
+                onEnter={enter}
+              />
             ))}
           </View>
         )}
@@ -206,6 +233,13 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flexWrap: 'wrap',
+  },
+  creatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 8,
     flexWrap: 'wrap',
   },
   eventTitle: {

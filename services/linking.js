@@ -21,7 +21,7 @@ export const linkingConfig = {
         path: 'student',
         screens: {
           Asosiy: 'home',
-          Tadbirlar: 'events',
+          Musobaqalar: 'events',
           Mashq: 'practice',
           Natijalar: 'results',
           Profil: 'profile',
@@ -74,7 +74,7 @@ export function routeFromPushData(data) {
     case 'exam':
     case 'event':
       if (id) return { name: 'Exam', params: { olympiadId: id, title: data.title } };
-      return { name: 'StudentTabs', params: { screen: 'Tadbirlar' } };
+      return { name: 'StudentTabs', params: { screen: 'Musobaqalar' } };
     case 'duel':
       if (id) return { name: 'DuelPlay', params: { duelId: id } };
       return { name: 'DuelList' };

@@ -47,6 +47,7 @@ function ClassmatesList({ fetch, styles, colors, AVATAR_COLORS }) {
             <Text style={[styles.rank, me ? { color: colors.blueLight } : null]}>{entry.rank}</Text>
             <Avatar
               letter={initialOf(entry.full_name)}
+              uri={entry.avatar_url || entry.avatarUrl}
               size={36}
               fontSize={14}
               background={AVATAR_COLORS[i % AVATAR_COLORS.length]}
@@ -79,7 +80,7 @@ export default function LeaderboardScreen() {
   const { data, loading, error, reload } = useFetch(
     () =>
       studentApi
-        .leaderboard({ page_size: 50, ...(period === 1 ? { period: 'week' } : {}) })
+        .leaderboard({ page_size: 100, ...(period === 1 ? { period: 'week' } : {}) })
         .then((r) => r.data),
     [period]
   );
@@ -94,14 +95,22 @@ export default function LeaderboardScreen() {
   if (loading && !data && scope !== 2) return <LoadingState message="Reyting yuklanmoqda…" />;
   if (error && !data && scope !== 2) return <ErrorState onRetry={reload} />;
 
-  const allEntries = data?.entries || (Array.isArray(data) ? data : []);
-  const myCenter = user?.center_name;
+  const allEntries =
+    data?.entries || data?.results || (Array.isArray(data) ? data : []);
+  const myCenter = user?.center_name || user?.roles_detail?.student?.centers?.find?.((c) => c.status === 'approved')?.centerName;
   // "Markazim" — global reytingdagi shu markaz a'zolari (client-side filtr).
+  // O'rin markaz ichida qayta hisoblanadi (global rank emas).
   const entries =
-    scope === 1 && myCenter ? allEntries.filter((e) => (e.center || '') === myCenter) : allEntries;
+    scope === 1 && myCenter
+      ? allEntries
+          .filter((e) => (e.center || '') === myCenter)
+          .map((e, i) => ({ ...e, rank: i + 1 }))
+      : allEntries;
   const top3 = entries.slice(0, 3);
   const rest = entries.slice(3);
   const podiumDisplay = [top3[1], top3[0], top3[2]];
+  const isMeEntry = (entry) =>
+    user != null && entry?.user_id != null && Number(entry.user_id) === Number(user.id);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -146,6 +155,7 @@ export default function LeaderboardScreen() {
                       <View style={styles.winnerWrap}>
                         <Avatar
                           letter={initialOf(entry.name)}
+                          uri={entry.avatar_url || entry.avatarUrl}
                           size={62}
                           fontSize={22}
                           background={colors.blueDeep}
@@ -159,6 +169,7 @@ export default function LeaderboardScreen() {
                     ) : (
                       <Avatar
                         letter={initialOf(entry.name)}
+                        uri={entry.avatar_url || entry.avatarUrl}
                         size={52}
                         fontSize={19}
                         background={AVATAR_COLORS[i % AVATAR_COLORS.length]}
@@ -189,12 +200,13 @@ export default function LeaderboardScreen() {
 
             <View style={styles.list}>
               {rest.map((entry, i) => {
-                const me = user && entry.user_id === user.id;
+                const me = isMeEntry(entry);
                 return (
                   <View key={entry.attempt_id || `${entry.user_id}-${i}`} style={[styles.row, me ? styles.meRow : null]}>
                     <Text style={[styles.rank, me ? { color: colors.blueLight } : null]}>{entry.rank}</Text>
                     <Avatar
                       letter={initialOf(entry.name)}
+                      uri={entry.avatar_url || entry.avatarUrl}
                       size={36}
                       fontSize={14}
                       background={AVATAR_COLORS[i % AVATAR_COLORS.length]}

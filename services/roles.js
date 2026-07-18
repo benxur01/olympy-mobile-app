@@ -157,6 +157,8 @@ const SHELL_ROUTES = {
     'Leaderboard',
     'Shop',
     'Premium',
+    'MyCompetitions',
+    'MyCertificates',
     'Analytics',
     'Progress',
     'Mistakes',

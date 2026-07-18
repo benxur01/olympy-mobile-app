@@ -366,6 +366,38 @@ export const DotsIcon = ({ size = 18, color = COLORS.textSecondary }) => (
   </Svg>
 );
 
+export const SunIcon = ({ size = 18, color = COLORS.textSecondary, strokeWidth = 2 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24">
+    <Circle cx="12" cy="12" r="4.5" stroke={color} strokeWidth={strokeWidth} fill="none" />
+    <Path
+      d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8l1.8-1.8M18 6l1.8-1.8"
+      stroke={color}
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+    />
+  </Svg>
+);
+
+export const MoonIcon = ({ size = 18, color = COLORS.textSecondary, strokeWidth = 2 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24">
+    <Path
+      d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5z"
+      stroke={color}
+      strokeWidth={strokeWidth}
+      fill="none"
+      strokeLinejoin="round"
+      strokeLinecap="round"
+    />
+  </Svg>
+);
+
+export const DeviceIcon = ({ size = 18, color = COLORS.textSecondary, strokeWidth = 2 }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24">
+    <Rect x="2.5" y="4.5" width="19" height="13" rx="2" stroke={color} strokeWidth={strokeWidth} fill="none" />
+    <Path d="M8.5 20.5h7M12 17.5v3" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" />
+  </Svg>
+);
+
 export const QrSample = ({ size = 70, dark = COLORS.text, light = COLORS.white }) => (
   <Svg width={size} height={size} viewBox="0 0 70 70">
     <Rect x="0" y="0" width="20" height="20" fill={dark} />

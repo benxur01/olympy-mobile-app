@@ -18,7 +18,7 @@ export default function StudentTabs() {
       tabBar={(props) => <NavigationTabBar {...props} items={STUDENT_TABS} />}
     >
       <Tab.Screen name="Asosiy" component={StudentHomeScreen} />
-      <Tab.Screen name="Tadbirlar" component={EventsScreen} />
+      <Tab.Screen name="Musobaqalar" component={EventsScreen} />
       <Tab.Screen name="Mashq" component={PracticeScreen} />
       <Tab.Screen name="Natijalar" component={ResultsScreen} />
       <Tab.Screen name="Profil" component={ProfileScreen} />

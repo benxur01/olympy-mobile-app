@@ -158,6 +158,37 @@ export const authApi = {
   deleteAvatar: () => client.delete('/api/auth/me/avatar/'),
 };
 
+// Backend leaderboard: { results: [...], pagination, header }.
+// Web client `results` → `entries`, `header` → `olympiad` qilib moslashtiradi.
+// Mobil ham shu shaklni kutadi — normalizatsiya bo'lmasa ro'yxat doim bo'sh.
+export function extractLeaderboardEntries(payload) {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload.entries)) return payload.entries;
+  if (Array.isArray(payload.results)) return payload.results;
+  // Ba'zi proxy/client qatlamlari yana `data` ichiga o'raydi.
+  if (payload.data && payload.data !== payload) {
+    return extractLeaderboardEntries(payload.data);
+  }
+  return [];
+}
+
+function normalizeLeaderboardPayload(data) {
+  if (Array.isArray(data)) {
+    return { entries: data, pagination: null, olympiad: null, header: null };
+  }
+  if (!data || typeof data !== 'object') {
+    return { entries: [], pagination: null, olympiad: null, header: null };
+  }
+  const entries = extractLeaderboardEntries(data);
+  return {
+    entries,
+    pagination: data.pagination || null,
+    olympiad: data.olympiad || data.header || null,
+    header: data.header || data.olympiad || null,
+  };
+}
+
 export const studentApi = {
   myStats: () => client.get('/api/results/me/stats/'),
   myResults: (params) => client.get('/api/results/me/', { params }),
@@ -218,7 +249,14 @@ export const studentApi = {
   wrongAnswerStart: (payload) => client.post('/api/practice/wrong-answers/start/', payload),
   mistakes: () => client.get('/api/attempts/mistakes/'),
   explainAllMistakes: () => client.post('/api/attempts/mistakes/explain/'),
-  leaderboard: (params) => client.get('/api/leaderboard/', { params }),
+  // GET /api/leaderboard/ — global yoki ?olympiad= / ?period=week bo'yicha.
+  // Backend { results, pagination, header } qaytaradi; klient uchun
+  // { entries, pagination, olympiad } ga normalizatsiya qilinadi.
+  leaderboard: async (params) => {
+    const res = await client.get('/api/leaderboard/', { params });
+    res.data = normalizeLeaderboardPayload(res.data);
+    return res;
+  },
   // Sinfdoshlar reytingi (onboarding_grade bo'yicha; sinf yo'q bo'lsa umumiy) →
   // [{ user_id, rank, full_name, avg_score, streak, is_me }].
   classmatesLeaderboard: () => client.get('/api/me/classmates-leaderboard/'),
@@ -231,10 +269,6 @@ export const studentApi = {
   // bilan idempotent; allaqachon a'zo bo'lsa 400 qaytadi).
   joinCenter: (centerId, payload) =>
     client.post(`/api/centers/${centerId}/join/`, payload || { subject: '' }),
-  // Olimpiada kalendari — kelgusi ~90 kun ichidagi tadbirlar. `params` orqali
-  // { subject, days } uzatiladi. Javob: { upcoming: [{ id, name, subject,
-  //   starts_at, days_until, registered }] }.
-  olympiadCalendar: (params) => client.get('/api/olympiad-calendar/', { params }),
   // Oxirgi N oy o'rtacha ball dinamikasi (O'sishim/Analytics ustunli grafigi) →
   // { months: [{ label yoki month, average_score }] }.
   monthlyStats: (months) =>
@@ -416,10 +450,15 @@ export const teacherApi = {
   codeSubmissions: (olympiadId) => client.get(`/api/olympiads/${olympiadId}/code-submissions/`),
   updateOlympiad: (id, payload) => client.patch(`/api/olympiads/${id}/`, payload),
   deleteOlympiad: (id) => client.delete(`/api/olympiads/${id}/`),
-  // To'liq (sahifalangan) tadbir reytingi. Javob shakli LeaderboardScreen bilan
-  // bir xil: { entries:[...], pagination:{ total } } (yoki oddiy massiv).
-  leaderboardForOlympiad: (id, page = 1, pageSize = 200) =>
-    client.get('/api/leaderboard/', { params: { olympiad: id, page, page_size: pageSize } }),
+  // To'liq (sahifalangan) tadbir reytingi. Backend { results, pagination }
+  // qaytaradi — { entries, pagination } ga normalizatsiya qilinadi.
+  leaderboardForOlympiad: async (id, page = 1, pageSize = 200) => {
+    const res = await client.get('/api/leaderboard/', {
+      params: { olympiad: id, page, page_size: pageSize },
+    });
+    res.data = normalizeLeaderboardPayload(res.data);
+    return res;
+  },
   // Bitta o'quvchining tadbirdagi har bir savol bo'yicha javobi. Javob:
   // { student_name, correct_count, wrong_count, score, questions:[...] }.
   eventUserAnswers: (olympiadId, userId) =>

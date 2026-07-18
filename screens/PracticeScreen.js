@@ -14,7 +14,6 @@ import useFetch from '../services/useFetch';
 import { studentApi } from '../services/api';
 import { useAuth } from '../services/AuthContext';
 import {
-  RepeatIcon,
   TrophyIcon,
   ChevronRightIcon,
   LockIcon,
@@ -67,7 +66,6 @@ export default function PracticeScreen({ navigation }) {
   const subjects = data?.wrong || [];
   const totalWrong = subjects.reduce((sum, s) => sum + (s.question_count || 0), 0);
   const hasWrong = totalWrong > 0;
-  const topSubject = subjects[0]?.subject;
   const isPremium = user?.is_premium || user?.is_premium_active;
 
   const topicSubjects = normalizeTopicSubjects(data?.topicSubjects);
@@ -133,25 +131,6 @@ export default function PracticeScreen({ navigation }) {
         <Text style={styles.subtitle}>Bilimingizni mustahkamlang</Text>
 
         <View style={styles.modes}>
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => startRepeat(topSubject)}
-            disabled={!hasWrong}
-          >
-            <Card radius={18} style={[styles.modeCard, !hasWrong ? styles.modeDisabled : null]}>
-              <IconBox size={46} radius={14} background={tints.red13}>
-                <RepeatIcon size={22} color={colors.red} />
-              </IconBox>
-              <View style={styles.modeText}>
-                <Text style={styles.modeTitle}>Xato javoblarni takrorlash</Text>
-                <Text style={styles.modeSub}>
-                  {hasWrong ? `${totalWrong} ta savol sizni kutmoqda` : "Hozircha xato yo'q"}
-                </Text>
-              </View>
-              <ChevronRightIcon size={15} />
-            </Card>
-          </TouchableOpacity>
-
           <TouchableOpacity activeOpacity={0.85} onPress={() => setPicker('topic')}>
             <Card radius={18} style={styles.modeCard}>
               <IconBox size={46} radius={14} background={tints.blue14}>
@@ -178,13 +157,13 @@ export default function PracticeScreen({ navigation }) {
             </Card>
           </TouchableOpacity>
 
-          <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('Tadbirlar')}>
+          <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('Musobaqalar')}>
             <Card radius={18} style={styles.modeCard}>
               <IconBox size={46} radius={14} background={tints.gold13}>
                 <TrophyIcon size={22} color={colors.gold} strokeWidth={1.9} full={false} />
               </IconBox>
               <View style={styles.modeText}>
-                <Text style={styles.modeTitle}>Tadbirlarda qatnashish</Text>
+                <Text style={styles.modeTitle}>Musobaqalarda qatnashish</Text>
                 <Text style={styles.modeSub}>Faol olimpiadalarni ko'rish</Text>
               </View>
               <ChevronRightIcon size={15} />
@@ -242,7 +221,7 @@ export default function PracticeScreen({ navigation }) {
             <View style={styles.emptyMistakes}>
               <Text style={styles.emptyTitle}>Xatolar yo'q</Text>
               <Text style={styles.emptyText}>
-                Ajoyib! Hali noto'g'ri javob bermagansiz. Tadbirlarda qatnashishda davom eting.
+                Ajoyib! Hali noto'g'ri javob bermagansiz. Musobaqalarda qatnashishda davom eting.
               </Text>
             </View>
           )}
@@ -335,9 +314,6 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-  },
-  modeDisabled: {
-    opacity: 0.6,
   },
   modeText: {
     flex: 1,

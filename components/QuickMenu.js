@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
 import { FONTS } from '../constants/typography';
 import { useTheme } from '../services/ThemeContext';
 
@@ -9,27 +9,33 @@ import { useTheme } from '../services/ThemeContext';
 export default function QuickMenu({ visible, onClose, items = [], title }) {
   const { colors } = useTheme();
   const styles = makeStyles(colors);
+  const { width, height } = useWindowDimensions();
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.root}>
-        <TouchableOpacity activeOpacity={1} style={styles.overlay} onPress={onClose} />
-        <View style={styles.menu}>
-          {title ? <Text style={styles.title}>{title}</Text> : null}
-          {items.map((it, i) => (
-            <TouchableOpacity
-              key={i}
-              activeOpacity={0.75}
-              onPress={() => {
-                onClose && onClose();
-                it.onPress && it.onPress();
-              }}
-              style={[styles.item, i < items.length - 1 ? styles.itemBorder : null]}
-            >
-              {it.icon ? <View style={styles.iconBox}>{it.icon}</View> : null}
-              <Text style={[styles.label, it.danger ? { color: colors.red } : null]}>{it.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+      {/* StyleSheet.absoluteFillObject (top/left/right/bottom: 0) modal ichida
+          o'lchamga aylanmayapti — Modal'ning ildiz konteyneri aniq o'lcham
+          bermaydi, shu sabab overlay ko'rinmas va bosilmas edi. Ekran
+          o'lchamini aniq width/height sifatida berish orqali tuzatildi. */}
+      <Pressable
+        style={[styles.overlay, { width, height }]}
+        onPress={onClose}
+      />
+      <View style={styles.menu}>
+        {title ? <Text style={styles.title}>{title}</Text> : null}
+        {items.map((it, i) => (
+          <TouchableOpacity
+            key={i}
+            activeOpacity={0.75}
+            onPress={() => {
+              onClose && onClose();
+              it.onPress && it.onPress();
+            }}
+            style={[styles.item, i < items.length - 1 ? styles.itemBorder : null]}
+          >
+            {it.icon ? <View style={styles.iconBox}>{it.icon}</View> : null}
+            <Text style={[styles.label, it.danger ? { color: colors.red } : null]}>{it.label}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
     </Modal>
   );
@@ -37,11 +43,10 @@ export default function QuickMenu({ visible, onClose, items = [], title }) {
 
 const makeStyles = (colors) =>
   StyleSheet.create({
-    root: {
-      flex: 1,
-    },
     overlay: {
-      ...StyleSheet.absoluteFillObject,
+      position: 'absolute',
+      top: 0,
+      left: 0,
       backgroundColor: colors.overlay,
     },
     menu: {

@@ -66,6 +66,7 @@ const makeStyles = (colors, tints) =>
       fontSize: 16,
       fontFamily: FONTS.extrabold,
       color: colors.text,
+      textAlign: 'center',
     },
     message: {
       fontSize: 13,

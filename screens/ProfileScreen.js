@@ -1,6 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Linking, Modal, Image, ActivityIndicator, TextInput, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../services/ThemeContext';
 import { FONTS } from '../constants/typography';
@@ -30,6 +31,13 @@ import {
   ShareIcon,
   CoinIcon,
   TelegramIcon,
+  CrownIcon,
+  BuildingIcon,
+  SettingsIcon,
+  EyeIcon,
+  SunIcon,
+  MoonIcon,
+  DeviceIcon,
 } from '../components/icons/Icons';
 import Badge from '../components/Badge';
 import SegmentedControl from '../components/SegmentedControl';
@@ -155,7 +163,7 @@ function ReferralSection({ referral, onUsed, styles, colors }) {
   );
 }
 
-export default function ProfileScreen({ navigation }) {
+export default function ProfileScreen({ navigation, route }) {
   const { colors, tints, mode, setThemeMode } = useTheme();
   const styles = makeStyles(colors, tints);
   const tabBarSpacing = useTabBarSpacing();
@@ -169,6 +177,11 @@ export default function ProfileScreen({ navigation }) {
   };
   const THEME_OPTIONS = ['light', 'dark', 'system'];
   const THEME_LABELS = ['Yorug\'', 'Tungi', 'Tizim'];
+  const THEME_ICONS = [
+    (c) => <SunIcon size={14} color={c} />,
+    (c) => <MoonIcon size={14} color={c} />,
+    (c) => <DeviceIcon size={14} color={c} />,
+  ];
   const { user, logout, reloadMe } = useAuth();
   // Profil ekrani barcha rollarga ochiq (o'qituvchi/menejer/direktor/admin
   // menyu yoki header orqali kiradi), lekin natija/olimpiada/sertifikat/coin
@@ -178,7 +191,18 @@ export default function ProfileScreen({ navigation }) {
   const isStudent = Array.isArray(user?.roles)
     ? user.roles.includes('student')
     : false;
-  const [tab, setTab] = useState(isStudent ? 'Sertifikatlar' : 'Sozlamalar');
+  const [tab, setTab] = useState(route?.params?.tab || (isStudent ? 'Sertifikatlar' : 'Sozlamalar'));
+  // Boshqa ekrandan (Asosiy → Musobaqalar KPI) navigate qilib kelganda
+  // tab allaqachon mount bo'lgan — params va focus da Olimpiadalar tabini ochamiz.
+  useEffect(() => {
+    if (route?.params?.tab) setTab(route.params.tab);
+  }, [route?.params?.tab]);
+  useFocusEffect(
+    useCallback(() => {
+      const t = route?.params?.tab;
+      if (t) setTab(t);
+    }, [route?.params?.tab])
+  );
   const [certImage, setCertImage] = useState(null);
   const [certLoading, setCertLoading] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
@@ -193,12 +217,12 @@ export default function ProfileScreen({ navigation }) {
     // Boshqa rollar uchun student endpoint'lari 403 qaytaradi — ularni
     // chaqirmaymiz (aks holda hammasi null bo'lib xato ekraniga tushardi).
     if (!isStudent) {
-      return { stats: null, streak: null, results: [], coins: 0, olympiads: [], referral: null };
+      return { stats: null, streak: null, results: [], olympiads: [], referral: null };
     }
     const [stats, streak, results, shop, olympiads, referral] = await Promise.all([
       studentApi.myStats().then((r) => r.data).catch(() => null),
       studentApi.myStreak().then((r) => r.data).catch(() => null),
-      studentApi.myResults({ page_size: 10 }).then((r) => r.data).catch(() => null),
+      studentApi.myResults({ page_size: 50 }).then((r) => r.data).catch(() => null),
       studentApi.shopProducts().then((r) => r.data).catch(() => null),
       studentApi.olympiads().then((r) => r.data).catch(() => null),
       studentApi.getReferralInfo().then((r) => r.data).catch(() => null),
@@ -208,12 +232,49 @@ export default function ProfileScreen({ navigation }) {
     if (stats === null && streak === null && results === null && shop === null) {
       throw new Error('profile_load_failed');
     }
+    const resultsArr = Array.isArray(results) ? results : results?.results || [];
+    const olympiadsArr = Array.isArray(olympiads)
+      ? olympiads
+      : olympiads?.results || olympiads?.entries || [];
+
+    // Natijalarda ko'pincha faqat olympiad id bor (title yo'q). Yo'q nomlarni
+    // detail so'rovi bilan to'ldiramiz — "qaysi musobaqaga qatnashgan" ro'yxati.
+    const olyById = {};
+    olympiadsArr.forEach((o) => {
+      if (o?.id != null) olyById[o.id] = o;
+    });
+    const missingIds = [
+      ...new Set(
+        resultsArr
+          .map((r) => {
+            // Title allaqachon bo'lsa detail kerak emas
+            if (r.olympiad_title || r.olympiad?.title) return null;
+            const o = r.olympiad;
+            const id = o && typeof o === 'object' ? o.id : o;
+            if (id == null || olyById[id]) return null;
+            return id;
+          })
+          .filter((id) => id != null)
+      ),
+    ];
+
+    if (missingIds.length) {
+      const details = await Promise.all(
+        missingIds.slice(0, 20).map((id) =>
+          studentApi.olympiadDetail(id).then((r) => r.data).catch(() => null)
+        )
+      );
+      details.forEach((o) => {
+        if (o?.id != null) olyById[o.id] = o;
+      });
+    }
+
     return {
       stats,
       streak,
-      results: Array.isArray(results) ? results : results?.results || [],
-      coins: shop?.coins ?? 0,
-      olympiads: Array.isArray(olympiads) ? olympiads : olympiads?.results || olympiads?.entries || [],
+      results: resultsArr,
+      olympiads: olympiadsArr,
+      olyById,
       referral,
     };
   }, [isStudent]);
@@ -224,7 +285,6 @@ export default function ProfileScreen({ navigation }) {
   const stats = data?.stats || {};
   const streak = data?.streak || {};
   const results = data?.results || [];
-  const coins = data?.coins ?? 0;
   const olympiads = data?.olympiads || [];
   const isPremium = user?.is_premium || user?.is_premium_active;
   const twoFAEnabled = !!user?.totp_enabled;
@@ -282,22 +342,40 @@ export default function ProfileScreen({ navigation }) {
         : `${API_BASE_URL}${rawAvatar.startsWith('/') ? '' : '/'}${rawAvatar}`)
     : null;
 
-  // "Olimpiadalar" tabi — foydalanuvchi qatnashgan tadbirlar (natijalardan),
-  // holati mavjud olimpiadalar ro'yxatidan boyitiladi.
-  const olyByTitle = {};
+  // "Olimpiadalar" tabi — qatnashgan musobaqalar (urinishlar + nom/fan).
+  const olyById = { ...(data?.olyById || {}) };
   olympiads.forEach((o) => {
-    if (o?.title) olyByTitle[o.title] = o;
+    if (o?.id != null) olyById[o.id] = o;
   });
   const participated = results.map((r) => {
-    const title = r.olympiad_title || r.olympiad?.title || 'Tadbir';
-    const oly = olyByTitle[title];
+    const olympiadId =
+      r.olympiad && typeof r.olympiad === 'object' ? r.olympiad.id : r.olympiad;
+    const oly =
+      (olympiadId != null ? olyById[olympiadId] : null) ||
+      (r.olympiad && typeof r.olympiad === 'object' ? r.olympiad : null);
+    const title =
+      r.olympiad_title ||
+      oly?.title ||
+      r.olympiad?.title ||
+      (olympiadId != null ? `Olimpiada #${olympiadId}` : 'Tadbir');
+    const submitted = r.submitted_at ? new Date(r.submitted_at) : null;
+    const when =
+      submitted && !Number.isNaN(submitted.getTime())
+        ? submitted.toLocaleDateString('uz-UZ', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+          })
+        : '';
     return {
-      id: r.id,
+      id: r.id ?? `${olympiadId}-${r.score}`,
+      olympiadId,
       title,
-      subject: r.subject || oly?.subject,
+      subject: r.subject || oly?.subject || '',
       score: r.score,
       rank: r.rank,
       status: oly?.status || 'finished',
+      when,
     };
   });
 
@@ -498,29 +576,6 @@ export default function ProfileScreen({ navigation }) {
         </View>
 
         {isStudent ? (
-          <View style={styles.statsGrid}>
-            <Card radius={14} style={styles.statCell}>
-              <Text style={styles.statValue}>{stats.average_score ?? 0}</Text>
-              <Text style={styles.statLabel}>O'rtacha</Text>
-            </Card>
-            <Card radius={14} style={styles.statCell}>
-              <Text style={styles.statValue}>{stats.best_rank ? `#${stats.best_rank}` : '—'}</Text>
-              <Text style={styles.statLabel}>Reyting</Text>
-            </Card>
-            <Card radius={14} style={styles.statCell}>
-              <Text style={[styles.statValue, { color: colors.orange }]}>{streak.streak_count ?? 0}</Text>
-              <Text style={styles.statLabel}>Streak</Text>
-            </Card>
-            <TouchableOpacity activeOpacity={0.85} style={styles.statTouch} onPress={() => navigation.navigate('Shop')}>
-              <Card radius={14} style={[styles.statCell, { flex: 1 }]}>
-                <Text style={[styles.statValue, { color: colors.gold }]}>{coins.toLocaleString('uz-UZ')}</Text>
-                <Text style={styles.statLabel}>Coin</Text>
-              </Card>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-
-        {isStudent ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -528,7 +583,15 @@ export default function ProfileScreen({ navigation }) {
             contentContainerStyle={styles.tabsRow}
           >
             {TABS.map((t) => (
-              <Chip key={t} label={t} active={tab === t} onPress={() => setTab(t)} />
+              <Chip
+                key={t}
+                label={t}
+                active={tab === t}
+                onPress={() => setTab(t)}
+                paddingV={7}
+                paddingH={10}
+                fontSize={11}
+              />
             ))}
           </ScrollView>
         ) : null}
@@ -540,6 +603,9 @@ export default function ProfileScreen({ navigation }) {
             </Card>
           ) : (
             <View style={styles.certList}>
+              <Text style={styles.olyListHint}>
+                Qatnashgan musobaqalaringiz ({participated.length})
+              </Text>
               {participated.map((o, i) => {
                 const st = OLY_STATUS[o.status] || OLY_STATUS.finished;
                 return (
@@ -548,9 +614,10 @@ export default function ProfileScreen({ navigation }) {
                       <CalendarIcon size={19} color={colors.blue} strokeWidth={2} />
                     </IconBox>
                     <View style={styles.certText}>
-                      <Text style={styles.certTitle} numberOfLines={1}>{o.title}</Text>
+                      <Text style={styles.certTitle} numberOfLines={2}>{o.title}</Text>
                       <View style={styles.olyMeta}>
                         {o.subject ? <Text style={styles.certSub}>{o.subject}</Text> : null}
+                        {o.when ? <Text style={styles.certSub}>{o.when}</Text> : null}
                         <Badge label={st.label} color={st.color} background={st.bg} size={9.5} style={styles.olyBadge} />
                       </View>
                     </View>
@@ -569,8 +636,11 @@ export default function ProfileScreen({ navigation }) {
               <Text style={styles.settingText}>Ko'rinish rejimi</Text>
               <SegmentedControl
                 segments={THEME_LABELS}
+                icons={THEME_ICONS}
                 activeIndex={THEME_OPTIONS.indexOf(mode)}
                 onChange={(i) => setThemeMode(THEME_OPTIONS[i])}
+                fontSize={11.5}
+                compact
                 style={styles.themeSegmented}
               />
             </Card>
@@ -596,7 +666,10 @@ export default function ProfileScreen({ navigation }) {
             {isStudent && !isPremium ? (
               <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('Premium')}>
                 <Card style={styles.settingRow}>
-                  <Text style={styles.settingText}>Premiumga o'tish</Text>
+                  <View style={styles.settingLeft}>
+                    <CrownIcon size={16} color={colors.gold} />
+                    <Text style={styles.settingText}>Premiumga o'tish</Text>
+                  </View>
                   <Text style={styles.settingArrow}>›</Text>
                 </Card>
               </TouchableOpacity>
@@ -604,20 +677,29 @@ export default function ProfileScreen({ navigation }) {
             {isStudent ? (
               <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('JoinCenter')}>
                 <Card style={styles.settingRow}>
-                  <Text style={styles.settingText}>Boshqa markazga qo'shilish</Text>
+                  <View style={styles.settingLeft}>
+                    <BuildingIcon size={16} color={colors.blue} />
+                    <Text style={styles.settingText}>Boshqa markazga qo'shilish</Text>
+                  </View>
                   <Text style={styles.settingArrow}>›</Text>
                 </Card>
               </TouchableOpacity>
             ) : null}
             <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('ChangePassword')}>
               <Card style={styles.settingRow}>
-                <Text style={styles.settingText}>Parolni o'zgartirish</Text>
+                <View style={styles.settingLeft}>
+                  <SettingsIcon size={16} color={colors.textSecondary} />
+                  <Text style={styles.settingText}>Parolni o'zgartirish</Text>
+                </View>
                 <Text style={styles.settingArrow}>›</Text>
               </Card>
             </TouchableOpacity>
             <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('TwoFactor')}>
               <Card style={styles.settingRow}>
-                <Text style={styles.settingText}>Ikki bosqichli tasdiqlash</Text>
+                <View style={styles.settingLeft}>
+                  <LockIcon size={16} color={colors.textSecondary} />
+                  <Text style={styles.settingText}>Ikki bosqichli tasdiqlash</Text>
+                </View>
                 <View style={styles.settingRight}>
                   <Text style={[styles.twoFAStatus, twoFAEnabled ? styles.twoFAOn : styles.twoFAOff]}>
                     {twoFAEnabled ? 'Yoqilgan' : "O'chiq"}
@@ -642,7 +724,10 @@ export default function ProfileScreen({ navigation }) {
             </TouchableOpacity>
             <TouchableOpacity activeOpacity={0.85} onPress={openPrivacy}>
               <Card style={styles.settingRow}>
-                <Text style={styles.settingText}>Maxfiylik siyosati</Text>
+                <View style={styles.settingLeft}>
+                  <EyeIcon size={16} color={colors.textSecondary} />
+                  <Text style={styles.settingText}>Maxfiylik siyosati</Text>
+                </View>
                 <Text style={styles.settingArrow}>›</Text>
               </Card>
             </TouchableOpacity>
@@ -651,11 +736,8 @@ export default function ProfileScreen({ navigation }) {
                 <Text style={[styles.settingText, { color: colors.red }]}>Hisobdan chiqish</Text>
               </Card>
             </TouchableOpacity>
-            <TouchableOpacity activeOpacity={0.85} onPress={confirmDelete}>
-              <Card style={[styles.settingRow, styles.deleteRow]}>
-                <Text style={[styles.settingText, { color: colors.red }]}>Hisobni o'chirish</Text>
-                <Text style={styles.deleteHint}>Butunlay o'chiriladi</Text>
-              </Card>
+            <TouchableOpacity activeOpacity={0.6} onPress={confirmDelete} style={styles.deleteLink}>
+              <Text style={styles.deleteLinkText}>Hisobni o'chirish</Text>
             </TouchableOpacity>
           </View>
         ) : results.length === 0 ? (
@@ -683,11 +765,11 @@ export default function ProfileScreen({ navigation }) {
           </View>
         )}
 
-        {isStudent && data?.referral ? (
+        {isStudent && tab !== 'Sozlamalar' && data?.referral ? (
           <ReferralSection referral={data.referral} onUsed={refresh} styles={styles} colors={colors} />
         ) : null}
 
-        {isStudent ? (
+        {isStudent && tab !== 'Sozlamalar' ? (
           <>
             <Text style={styles.sectionTitle}>Yutuqlar</Text>
             <View style={styles.achievements}>
@@ -886,53 +968,29 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
   },
-  statsGrid: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
-  },
-  statTouch: {
-    flex: 1,
-  },
-  statCell: {
-    flex: 1,
-    paddingVertical: 11,
-    paddingHorizontal: 6,
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 16,
-    fontFamily: FONTS.extrabold,
-    color: colors.text,
-  },
-  statLabel: {
-    fontSize: 9.5,
-    fontFamily: FONTS.bold,
-    color: colors.textSecondary,
-  },
   tabs: {
     marginTop: 18,
     flexGrow: 0,
   },
   tabsRow: {
     flexDirection: 'row',
-    gap: 7,
+    gap: 5,
     paddingRight: 4,
   },
   themeCard: {
-    paddingVertical: 14,
+    paddingVertical: 11,
     paddingHorizontal: 16,
-    gap: 10,
+    gap: 8,
   },
   themeSegmented: {
     marginTop: 2,
   },
   settingsList: {
-    gap: 8,
-    marginTop: 12,
+    gap: 6,
+    marginTop: 10,
   },
   settingRow: {
-    paddingVertical: 16,
+    paddingVertical: 13,
     paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
@@ -974,12 +1032,14 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     color: colors.textMuted,
     backgroundColor: colors.surfaceDeep,
   },
-  deleteRow: {
-    borderColor: tints.redBorder35,
+  deleteLink: {
+    alignItems: 'center',
+    paddingVertical: 10,
+    marginTop: 10,
   },
-  deleteHint: {
+  deleteLinkText: {
     fontSize: 11,
-    fontFamily: FONTS.bold,
+    fontFamily: FONTS.semibold,
     color: colors.textMuted,
   },
   certOverlay: {
@@ -1020,6 +1080,12 @@ const makeStyles = (colors, tints) => StyleSheet.create({
   certList: {
     gap: 8,
     marginTop: 12,
+  },
+  olyListHint: {
+    fontSize: 12,
+    fontFamily: FONTS.bold,
+    color: colors.textSecondary,
+    marginBottom: 2,
   },
   certCard: {
     paddingVertical: 14,

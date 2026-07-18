@@ -225,7 +225,7 @@ export default function AnalyticsScreen({ navigation }) {
           <>
             <View style={styles.statRow}>
               <StatCard
-                label="Tadbirlar"
+                label="Musobaqalar"
                 value={w.olympiads_count ?? 0}
                 icon={<IconBox size={30} radius={9} background={tints.blue14}><CalendarIcon size={15} color={colors.blue} strokeWidth={1.9} /></IconBox>}
               />
@@ -337,7 +337,7 @@ export default function AnalyticsScreen({ navigation }) {
           {!strength.ok ? (
             <InlineError text={strength.detail} />
           ) : topSubjects.length === 0 ? (
-            <InlineEmpty text="Kuchli fanlar aniqlanmadi. Tadbirlarda qatnashishda davom eting." />
+            <InlineEmpty text="Kuchli fanlar aniqlanmadi. Musobaqalarda qatnashishda davom eting." />
           ) : (
             <>
               <View style={styles.strengthRow}>

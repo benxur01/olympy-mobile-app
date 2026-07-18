@@ -23,9 +23,15 @@ const EXPORT_FORMATS = [
 ];
 const asArray = (data) => (Array.isArray(data) ? data : data?.results || []);
 const initialOf = (name) => (name || '?').trim()[0]?.toUpperCase() || '?';
-// Reyting javobi ikki xil shaklda kelishi mumkin: { entries:[...] } yoki oddiy
-// massiv (LeaderboardScreen naqshi). Ikkalasini ham xavfsiz o'qiymiz.
-const asEntries = (data) => (Array.isArray(data?.entries) ? data.entries : Array.isArray(data) ? data : []);
+// Reyting javobi: { entries } | { results } | oddiy massiv.
+const asEntries = (data) =>
+  Array.isArray(data?.entries)
+    ? data.entries
+    : Array.isArray(data?.results)
+      ? data.results
+      : Array.isArray(data)
+        ? data
+        : [];
 
 // Variantlar massividan indeks bo'yicha matnni oladi (mcq/yes_no uchun).
 const optAt = (options, idx) => {

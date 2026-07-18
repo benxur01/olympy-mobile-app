@@ -101,7 +101,12 @@ export default function PremiumScreen() {
   if (loading) return <LoadingState message="Tariflar yuklanmoqda…" />;
   if (error) return <ErrorState onRetry={reload} />;
 
-  const plans = Array.isArray(data) ? data : data?.results || data?.plans || [];
+  // Backend /api/billing/plans/ talaba VA tashkilot (markaz) rejalarini bitta
+  // ro'yxatda qaytaradi (plan_type: 'student' | 'organization') — bu ekran
+  // faqat o'quvchiga ko'rsatilgani uchun tashkilot rejalarini chiqarib tashlaymiz,
+  // aks holda ro'yxat keraksiz uzayib, tugamayotgandek his qildiradi.
+  const allPlans = Array.isArray(data) ? data : data?.results || data?.plans || [];
+  const plans = allPlans.filter((p) => !p.plan_type || p.plan_type === 'student');
 
   // Rejalarni muddat (duration_days) bo'yicha guruhlaymiz. Chegirma foizini
   // backend bermasa, eng qisqa muddatning kunlik narxiga nisbatan hisoblaymiz.

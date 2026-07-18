@@ -13,7 +13,7 @@ import {
 
 export const STUDENT_TABS = [
   { key: 'Asosiy', label: 'Asosiy', icon: (color, active) => <HomeIcon size={23} color={color} filled={active} /> },
-  { key: 'Tadbirlar', label: 'Tadbirlar', icon: (color, active) => <CalendarIcon size={23} color={color} filled={active} /> },
+  { key: 'Musobaqalar', label: 'Musobaqalar', icon: (color, active) => <CalendarIcon size={23} color={color} filled={active} /> },
   { key: 'Mashq', label: 'Mashq', icon: (color, active) => <TargetIcon size={23} color={color} filled={active} /> },
   { key: 'Natijalar', label: 'Natijalar', icon: (color) => <BarsIcon size={23} color={color} /> },
   { key: 'Profil', label: 'Profil', icon: (color, active) => <UserIcon size={23} color={color} filled={active} /> },

@@ -1,24 +1,120 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, Share, Alert, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useMemo, useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, Share } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../services/ThemeContext';
 import { FONTS } from '../constants/typography';
-import { useTabBarSpacing } from '../components/TabBar';
+import { useTabBarSpacing, TAB_BAR_CONTENT_HEIGHT } from '../components/TabBar';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
-import ProgressBar from '../components/ProgressBar';
+import Avatar from '../components/Avatar';
+import Chip from '../components/Chip';
+import SegmentedControl from '../components/SegmentedControl';
 import DonutProgress from '../components/DonutProgress';
-import IconBox from '../components/IconBox';
 import LoadingState from '../components/LoadingState';
 import ErrorState from '../components/ErrorState';
 import useFetch from '../services/useFetch';
-import { studentApi } from '../services/api';
+import { studentApi, extractLeaderboardEntries } from '../services/api';
 import { useAuth } from '../services/AuthContext';
-import { ShareIcon, CheckIcon, CloseIcon, LockIcon, SparkleIcon, RepeatIcon } from '../components/icons/Icons';
+import { ShareIcon, CheckIcon, CloseIcon, LockIcon, SparkleIcon, CrownIcon } from '../components/icons/Icons';
 
-const makeSECTION_COLORS = (colors, tints) => ([colors.blue, colors.green, colors.purple, colors.orange, colors.blueLight]);
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 const asArray = (data) => (Array.isArray(data) ? data : data?.results || []);
+const initialOf = (name) => (name || '?').trim()[0]?.toUpperCase() || '?';
+const minutes = (sec) => (sec ? `${Math.round(sec / 60)} daq` : '');
+
+// Dushanbadan boshlanadigan joriy hafta boshi (ms).
+const weekStartMs = () => {
+  const now = new Date();
+  const day = now.getDay(); // 0 = yakshanba
+  const mondayOffset = day === 0 ? 6 : day - 1;
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - mondayOffset);
+  return d.getTime();
+};
+
+// Umumiy reyting: "Bu hafta" — submitted_at bo'yicha filtr + o'rinni qayta.
+// Backend `?period=week` ni qo'llab-quvvatlasa ham, production hali
+// e'tiborsiz qoldirishi mumkin — klient filtr har doim ishonchli zaxira.
+const applyPeriodFilter = (entries, period) => {
+  const list = Array.isArray(entries) ? entries : [];
+  if (period !== 1) {
+    return list.map((e, i) => ({ ...e, rank: e.rank != null ? e.rank : i + 1 }));
+  }
+  const from = weekStartMs();
+  const filtered = list.filter((e) => {
+    if (!e?.submitted_at) return false;
+    const t = new Date(e.submitted_at).getTime();
+    return !Number.isNaN(t) && t >= from;
+  });
+  // Ball bo'yicha tartib (backend tartibini saqlashga urinamiz).
+  filtered.sort((a, b) => {
+    const scoreDiff = (Number(b.score) || 0) - (Number(a.score) || 0);
+    if (scoreDiff !== 0) return scoreDiff;
+    return (Number(a.time_spent) || 0) - (Number(b.time_spent) || 0);
+  });
+  return filtered.map((e, i) => ({ ...e, rank: i + 1 }));
+};
+
+const filterByCenterName = (entries, centerName) => {
+  if (!centerName) return [];
+  const name = String(centerName).trim().toLowerCase();
+  return (Array.isArray(entries) ? entries : [])
+    .filter((e) => String(e.center || '').trim().toLowerCase() === name)
+    .map((e, i) => ({ ...e, rank: i + 1 }));
+};
+
+// O'quvchi a'zo bo'lgan tashkilotlar — backend shakllari farq qilishi mumkin
+// (centers[], centerName, center_name, user.center_name).
+function studentJoinedCenters(user) {
+  const out = [];
+  const seen = new Set();
+  const push = (raw) => {
+    if (!raw || typeof raw !== 'object') return;
+    const centerName = String(
+      raw.centerName || raw.center_name || raw.name || ''
+    ).trim();
+    if (!centerName) return;
+    const key = centerName.toLowerCase();
+    if (seen.has(key)) return;
+    const status = String(raw.status || 'approved').toLowerCase();
+    // Faqat tasdiqlangan / active a'zolik
+    if (status && !['approved', 'active', 'accepted'].includes(status)) return;
+    seen.add(key);
+    out.push({
+      centerId: raw.centerId ?? raw.center_id ?? raw.id ?? null,
+      centerName,
+      status,
+    });
+  };
+
+  const rd = user?.roles_detail || {};
+  const student = rd.student || {};
+  const lists = [
+    student.centers,
+    student.center_list,
+    Array.isArray(rd.centers) ? rd.centers : null,
+  ];
+  for (const list of lists) {
+    if (Array.isArray(list)) list.forEach(push);
+  }
+  // Bitta asosiy markaz maydonlari
+  if (student.centerName || student.center_name) {
+    push({
+      centerId: student.centerId ?? student.center_id,
+      centerName: student.centerName || student.center_name,
+      status: student.status || 'approved',
+    });
+  }
+  if (user?.center_name || user?.centerName) {
+    push({
+      centerId: user.center_id ?? user.centerId,
+      centerName: user.center_name || user.centerName,
+      status: 'approved',
+    });
+  }
+  return out;
+}
 
 // Urinish tafsilotidan (attemptDetail) savol-javob ro'yxatini turli mumkin
 // bo'lgan javob shakllaridan normallashtirib chiqaramiz. Aniqlab bo'lmasa
@@ -70,22 +166,23 @@ const optionLabel = (options, val) => {
 export default function ResultsScreen({ navigation }) {
   const { colors, tints } = useTheme();
   const styles = makeStyles(colors, tints);
-  const SECTION_COLORS = makeSECTION_COLORS(colors, tints);
   const tabBarSpacing = useTabBarSpacing();
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const isPremium = user?.is_premium || user?.is_premium_active;
   const [aiData, setAiData] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [expanded, setExpanded] = useState({});
-  // Mashq (mock) rejimi: tugagan olimpiadani reytingga ta'sir qilmasdan qayta
-  // ishlash. Backend MockOlympiad nusxasini get-or-create qiladi, so'ng mashq
-  // ekraniga o'tamiz. practicingId — bosilgan natija qatorining id'si (spinner).
-  const [practicingId, setPracticingId] = useState(null);
+  // Reyting: 0 = Umumiy (platforma), 1 = Markazim (a'zo markazlar).
+  const [scope, setScope] = useState(0);
+  // Faqat Umumiy uchun: 0 = Barcha vaqt, 1 = Bu hafta.
+  const [period, setPeriod] = useState(0);
 
   const { data, loading, refreshing, error, reload, refresh } = useFetch(async () => {
-    const [results, stats] = await Promise.all([
+    const [results, stats, peer] = await Promise.all([
       studentApi.myResults({ page_size: 20 }).then((r) => r.data).catch(() => null),
       studentApi.myStats().then((r) => r.data).catch(() => null),
+      studentApi.peerComparison().then((r) => r.data).catch(() => null),
     ]);
     if (results === null && stats === null) {
       throw new Error('results_load_failed');
@@ -96,20 +193,102 @@ export default function ResultsScreen({ navigation }) {
     if (latestId) {
       detail = await studentApi.attemptDetail(latestId).then((r) => r.data).catch(() => null);
     }
-    return { results: arr, stats, detail };
+    return { results: arr, stats, detail, peer };
   }, []);
+
+  // O'quvchi qo'shilgan tashkilotlar — Markazim tabida nomlari chip bo'ladi
+  // (Barcha vaqt / Bu hafta FAQAT Umumiyda qoladi).
+  const approvedCenters = useMemo(() => studentJoinedCenters(user), [user]);
+  const hasCenters = approvedCenters.length > 0;
+  const [selectedCenterName, setSelectedCenterName] = useState(null);
+  const activeCenterName =
+    (selectedCenterName &&
+      approvedCenters.some((c) => c.centerName === selectedCenterName) &&
+      selectedCenterName) ||
+    approvedCenters[0]?.centerName ||
+    null;
+
+  // Umumiy reyting — top 100. period o'zgarganda qayta so'rov (backend
+  // ?period=week ni qo'llab-quvvatlasa to'g'ridan-to'g'ri; aks holda klient filtr).
+  const {
+    data: lbData,
+    loading: lbLoading,
+    error: lbError,
+    reload: lbReload,
+  } = useFetch(
+    () =>
+      studentApi
+        .leaderboard({
+          page_size: 100,
+          ...(period === 1 ? { period: 'week' } : {}),
+        })
+        .then((r) => r.data),
+    [period]
+  );
+
+  // Markaz reytingi uchun kattaroq ro'yxat (max 500) — markaz nomi bo'yicha
+  // client-side filtr. Markazimda period filtri YO'Q.
+  const centerLb = useFetch(
+    () => studentApi.leaderboard({ page_size: 500 }).then((r) => r.data),
+    []
+  );
 
   if (loading) return <LoadingState message="Natijalar yuklanmoqda…" />;
   if (error && !data) return <ErrorState onRetry={reload} />;
 
   const results = data?.results || [];
   const stats = data?.stats || {};
+  const peer = data?.peer || null;
   const latest = results[0] || null;
   const subjects = stats.subjects || [];
   const scorePct = latest ? latest.score : Math.round(stats.average_score || 0);
 
   const analysis = extractQuestionAnalysis(data?.detail);
   const hasAnalysis = analysis.some((q) => q.isCorrect !== null);
+
+  const isMeEntry = (entry) =>
+    user != null && entry?.user_id != null && Number(entry.user_id) === Number(user.id);
+
+  // ── Umumiy ──────────────────────────────────────────────────────────
+  const lbRaw = extractLeaderboardEntries(lbData);
+  // Backend period ishlamasa ham "Bu hafta" to'g'ri ishlashi uchun:
+  // - period=all: server tartibi/rank
+  // - period=week: agar server allaqachon filtrlgan bo'lsa (hammasi shu hafta),
+  //   qayta filtr no-op; aks holda klient filtr + qayta rank.
+  const lbAllEntries = applyPeriodFilter(lbRaw, period);
+  const lbTop3 = lbAllEntries.slice(0, 3);
+  const lbRest = lbAllEntries.slice(3);
+  const lbPodiumDisplay = [lbTop3[1], lbTop3[0], lbTop3[2]];
+  const myLbEntry = lbAllEntries.find(isMeEntry) || null;
+  // Global o'rin (Nav Bar tepasida va matnda). Top-100 ichida bo'lmasa —
+  // best_rank yoki "100+".
+  const globalRank =
+    myLbEntry?.rank ??
+    (period === 0 ? stats.best_rank : null) ??
+    null;
+  const globalRankLabel = globalRank
+    ? String(globalRank)
+    : (stats.total_attempts || 0) > 0 && period === 0
+      ? '100+'
+      : null;
+
+  // ── Markazim ────────────────────────────────────────────────────────
+  // entry.center = olimpiada o'tkazgan markaz nomi (public tadbirda bo'sh).
+  const centerRaw = extractLeaderboardEntries(centerLb.data);
+  const centerEntries = filterByCenterName(centerRaw, activeCenterName);
+  const centerTop3 = centerEntries.slice(0, 3);
+  const centerRest = centerEntries.slice(3);
+  const centerPodiumDisplay = [centerTop3[1], centerTop3[0], centerTop3[2]];
+  const myCenterEntry = centerEntries.find(isMeEntry) || null;
+
+  const rankDockBottom = TAB_BAR_CONTENT_HEIGHT + Math.max(insets.bottom, 14) + 10;
+
+  const PODIUM_META = [
+    { border: colors.silver, height: 62, rankColor: colors.silver },
+    { border: colors.gold, height: 82, rankColor: colors.gold },
+    { border: colors.bronze, height: 48, rankColor: colors.bronze },
+  ];
+  const AVATAR_COLORS = [colors.purple, colors.blueDeep, colors.green, colors.red, colors.orange];
 
   // Bitta savol uchun AI izohini (matnini) topamiz — turli shakllarni sinaymiz.
   const aiExplanationFor = (q) => {
@@ -146,33 +325,6 @@ export default function ResultsScreen({ navigation }) {
     setExpanded((prev) => ({ ...prev, [q.id]: !prev[q.id] }));
   };
 
-  const handlePractice = async (r) => {
-    if (practicingId != null) return;
-    // Attempt serializer `olympiad` FK id (int) qaytaradi; ba'zi javoblarda
-    // olympiad obyekt bo'lishi mumkin — ikkalasini ham qo'llaymiz.
-    const olympiadId = typeof r.olympiad === 'number' ? r.olympiad : r.olympiad?.id;
-    if (olympiadId == null) return;
-    setPracticingId(r.id);
-    try {
-      const { data: mock } = await studentApi.createPracticeMock(olympiadId);
-      if (mock?.mock_id != null) {
-        navigation.navigate('MockExam', {
-          mockId: mock.mock_id,
-          title: mock.title || r.olympiad_title || r.olympiad?.title,
-          subject: r.olympiad?.subject,
-          duration: r.time_limit_minutes || 30,
-        });
-      } else {
-        Alert.alert('Xatolik', "Mashq rejimini ochib bo'lmadi.");
-      }
-    } catch (e) {
-      const detail = e?.response?.data?.detail;
-      Alert.alert('Xatolik', detail || "Mashq rejimini ochib bo'lmadi.");
-    } finally {
-      setPracticingId(null);
-    }
-  };
-
   const onShare = async () => {
     const title = latest?.olympiad_title || latest?.olympiad?.title || 'Olympy';
     const message = latest
@@ -186,7 +338,7 @@ export default function ResultsScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: tabBarSpacing }]}
+        contentContainerStyle={[styles.content, { paddingBottom: tabBarSpacing + 44 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.blue} />}
       >
@@ -235,27 +387,340 @@ export default function ResultsScreen({ navigation }) {
           </Card>
         )}
 
-        {subjects.length ? (
-          <>
-            <Text style={styles.sectionTitle}>Fanlar bo'yicha o'rtacha</Text>
-            <Card radius={18} style={styles.sectionsCard}>
-              {subjects.map((s, i) => (
-                <View key={s.subject || i}>
-                  <View style={styles.sectionRow}>
-                    <Text style={styles.sectionName}>{s.subject || 'Fan'}</Text>
-                    <Text style={styles.sectionValue}>{Math.round(s.average_score || 0)}%</Text>
-                  </View>
-                  <ProgressBar
-                    progress={s.average_score || 0}
-                    height={8}
-                    color={SECTION_COLORS[i % SECTION_COLORS.length]}
-                    style={styles.sectionBar}
-                  />
-                </View>
-              ))}
-            </Card>
-          </>
+        <Text style={styles.sectionTitle}>Reyting</Text>
+        {peer && (peer.total_peers || 0) > 1 ? (
+          <Text style={styles.rankCompare}>
+            Sizning o'rtacha: <Text style={styles.rankCompareStrong}>{peer.my_avg}</Text>
+            {'  ·  '}O'quvchilar o'rtacha: <Text style={styles.rankCompareStrong}>{peer.peer_avg}</Text>
+          </Text>
         ) : null}
+
+        {/* Umumiy / Markazim — Markazim doim ko'rinadi; markaz bo'lmasa ichida CTA */}
+        <SegmentedControl
+          segments={['Umumiy', 'Markazim']}
+          activeIndex={scope}
+          onChange={setScope}
+          fontSize={11.5}
+          style={styles.scopeControl}
+        />
+
+        {scope === 0 ? (
+          <>
+            {/* FAQAT Umumiy: Barcha vaqt / Bu hafta */}
+            <View style={styles.periodRow}>
+              <Chip label="Barcha vaqt" active={period === 0} onPress={() => setPeriod(0)} />
+              <Chip label="Bu hafta" active={period === 1} onPress={() => setPeriod(1)} />
+            </View>
+            {globalRankLabel ? (
+              <Text style={styles.myRankText}>
+                Global reytingdagi o'rningiz:{' '}
+                <Text style={styles.myRankStrong}>#{globalRankLabel}</Text>
+                {!myLbEntry && lbAllEntries.length > 0 ? (
+                  <Text style={styles.myRankText}> · top {lbAllEntries.length} tadan tashqarida</Text>
+                ) : null}
+              </Text>
+            ) : lbAllEntries.length > 0 ? (
+              <Text style={styles.myRankText}>
+                Siz hozircha top-{lbAllEntries.length} da yo'q — olimpiadada qatnashib ball to'plang
+              </Text>
+            ) : null}
+
+            {lbLoading && !lbData ? (
+              <LoadingState message="Reyting yuklanmoqda…" />
+            ) : lbError && !lbData ? (
+              <ErrorState onRetry={lbReload} />
+            ) : lbAllEntries.length === 0 ? (
+              <View style={styles.lbEmptyWrap}>
+                <Text style={styles.emptyText}>
+                  {period === 1
+                    ? "Bu hafta hali reyting ma'lumoti yo'q"
+                    : "Hozircha reyting ma'lumoti yo'q"}
+                </Text>
+              </View>
+            ) : (
+              <>
+                <View style={styles.lbPodium}>
+                  {lbPodiumDisplay.map((entry, i) => {
+                    if (!entry) return <View key={i} style={styles.lbPodiumCol} />;
+                    const meta = PODIUM_META[i];
+                    const isWinner = i === 1;
+                    return (
+                      <View key={entry.attempt_id || entry.user_id || i} style={styles.lbPodiumCol}>
+                        {isWinner ? (
+                          <View style={styles.lbWinnerWrap}>
+                            <Avatar
+                              letter={initialOf(entry.name)}
+                              uri={entry.avatar_url || entry.avatarUrl}
+                              size={54}
+                              fontSize={19}
+                              background={colors.blueDeep}
+                              borderColor={meta.border}
+                              style={styles.lbWinnerAvatar}
+                            />
+                            <View style={styles.lbCrown}>
+                              <CrownIcon size={19} />
+                            </View>
+                          </View>
+                        ) : (
+                          <Avatar
+                            letter={initialOf(entry.name)}
+                            uri={entry.avatar_url || entry.avatarUrl}
+                            size={46}
+                            fontSize={16}
+                            background={AVATAR_COLORS[i % AVATAR_COLORS.length]}
+                            borderColor={meta.border}
+                          />
+                        )}
+                        <Text style={styles.lbPodiumName} numberOfLines={1}>
+                          {(entry.name || '').split(' ')[0]}
+                        </Text>
+                        <View style={[styles.lbPodiumBlock, { height: meta.height }, isWinner ? styles.lbWinnerBlock : null]}>
+                          <Text style={[styles.lbPodiumRank, { color: meta.rankColor }, isWinner ? { fontSize: 21 } : null]}>
+                            {entry.rank}
+                          </Text>
+                          <Text style={[styles.lbPodiumScore, isWinner ? { color: colors.goldMuted } : null]}>{entry.score}</Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+
+                <View style={styles.lbList}>
+                  {lbRest.map((entry, i) => {
+                    const me = isMeEntry(entry);
+                    return (
+                      <View key={entry.attempt_id || `${entry.user_id}-${i}`} style={[styles.lbRow, me ? styles.lbMeRow : null]}>
+                        <Text style={[styles.lbRank, me ? { color: colors.blueLight } : null]}>{entry.rank}</Text>
+                        <Avatar
+                          letter={initialOf(entry.name)}
+                          uri={entry.avatar_url || entry.avatarUrl}
+                          size={34}
+                          fontSize={13}
+                          background={AVATAR_COLORS[i % AVATAR_COLORS.length]}
+                        />
+                        <View style={styles.lbRowText}>
+                          <Text style={styles.lbRowName} numberOfLines={1}>
+                            {entry.name}
+                            {me ? <Text style={styles.lbMeTag}> · Siz</Text> : null}
+                          </Text>
+                          <Text style={styles.lbRowSub} numberOfLines={1}>
+                            {[entry.center, minutes(entry.time_spent)].filter(Boolean).join(' · ')}
+                          </Text>
+                        </View>
+                        <Text style={[styles.lbRowScore, me ? { color: colors.text } : null]}>{entry.score}</Text>
+                      </View>
+                    );
+                  })}
+                  {!myLbEntry && user && (globalRankLabel || (stats.total_attempts || 0) > 0) ? (
+                    <>
+                      <Text style={styles.lbEllipsis}>···</Text>
+                      <View style={[styles.lbRow, styles.lbMeRow]}>
+                        <Text style={[styles.lbRank, { color: colors.blueLight }]}>
+                          {globalRankLabel || '—'}
+                        </Text>
+                        <Avatar
+                          letter={initialOf(user?.full_name || user?.name)}
+                          uri={user?.avatar_url}
+                          size={34}
+                          fontSize={13}
+                          background={colors.blueDeep}
+                        />
+                        <View style={styles.lbRowText}>
+                          <Text style={styles.lbRowName} numberOfLines={1}>
+                            {user?.full_name || user?.name || 'Siz'}
+                            <Text style={styles.lbMeTag}> · Siz</Text>
+                          </Text>
+                          <Text style={styles.lbRowSub} numberOfLines={1}>
+                            Top {Math.max(lbAllEntries.length, 100)} tadan tashqarida
+                          </Text>
+                        </View>
+                        <Text style={[styles.lbRowScore, { color: colors.text }]}>
+                          {stats.best_score || stats.average_score || '—'}
+                        </Text>
+                      </View>
+                    </>
+                  ) : null}
+                </View>
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            {/* MARKAZIM: period YO'Q — o'rniga qo'shilgan tashkilot nomlari */}
+            <Text style={styles.centerSectionHint}>Tashkilotlaringiz</Text>
+            {!hasCenters ? (
+              <View style={styles.lbEmptyWrap}>
+                <Text style={styles.emptyText}>
+                  Siz hali hech qaysi o'quv markaziga qo'shilmagansiz
+                </Text>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  style={styles.joinCenterBtn}
+                  onPress={() => navigation.navigate('JoinCenter')}
+                >
+                  <Text style={styles.joinCenterBtnText}>Markazga qo'shilish</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                <View style={styles.centerChipWrap}>
+                  {approvedCenters.map((c) => {
+                    const name = c.centerName;
+                    const active = name === activeCenterName;
+                    return (
+                      <TouchableOpacity
+                        key={c.centerId ?? name}
+                        activeOpacity={0.8}
+                        onPress={() => setSelectedCenterName(name)}
+                        style={[
+                          styles.centerNameChip,
+                          active ? styles.centerNameChipActive : null,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.centerNameChipText,
+                            active ? styles.centerNameChipTextActive : null,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                {activeCenterName ? (
+                  <Text style={styles.myRankText}>
+                    <Text style={styles.myRankStrong}>{activeCenterName}</Text>
+                    {" · shu markaz o'quvchilari reytingi"}
+                    {myCenterEntry ? (
+                      <>
+                        {' · siz: '}
+                        <Text style={styles.myRankStrong}>#{myCenterEntry.rank}</Text>
+                      </>
+                    ) : null}
+                  </Text>
+                ) : null}
+
+                {centerLb.loading && !centerLb.data ? (
+                  <LoadingState message="Reyting yuklanmoqda…" />
+                ) : centerLb.error && !centerLb.data ? (
+                  <ErrorState onRetry={centerLb.reload} />
+                ) : centerEntries.length === 0 ? (
+                  <View style={styles.lbEmptyWrap}>
+                    <Text style={styles.emptyText}>
+                      {`"${activeCenterName || 'Markaz'}" bo'yicha reyting ma'lumoti yo'q`}
+                    </Text>
+                  </View>
+                ) : (
+                  <>
+                    <View style={styles.lbPodium}>
+                      {centerPodiumDisplay.map((entry, i) => {
+                        if (!entry) return <View key={i} style={styles.lbPodiumCol} />;
+                        const meta = PODIUM_META[i];
+                        const isWinner = i === 1;
+                        return (
+                          <View key={entry.attempt_id || entry.user_id || i} style={styles.lbPodiumCol}>
+                            {isWinner ? (
+                              <View style={styles.lbWinnerWrap}>
+                                <Avatar
+                                  letter={initialOf(entry.name)}
+                                  uri={entry.avatar_url || entry.avatarUrl}
+                                  size={54}
+                                  fontSize={19}
+                                  background={colors.blueDeep}
+                                  borderColor={meta.border}
+                                  style={styles.lbWinnerAvatar}
+                                />
+                                <View style={styles.lbCrown}>
+                                  <CrownIcon size={19} />
+                                </View>
+                              </View>
+                            ) : (
+                              <Avatar
+                                letter={initialOf(entry.name)}
+                                uri={entry.avatar_url || entry.avatarUrl}
+                                size={46}
+                                fontSize={16}
+                                background={AVATAR_COLORS[i % AVATAR_COLORS.length]}
+                                borderColor={meta.border}
+                              />
+                            )}
+                            <Text style={styles.lbPodiumName} numberOfLines={1}>
+                              {(entry.name || '').split(' ')[0]}
+                            </Text>
+                            <View style={[styles.lbPodiumBlock, { height: meta.height }, isWinner ? styles.lbWinnerBlock : null]}>
+                              <Text style={[styles.lbPodiumRank, { color: meta.rankColor }, isWinner ? { fontSize: 21 } : null]}>
+                                {entry.rank}
+                              </Text>
+                              <Text style={[styles.lbPodiumScore, isWinner ? { color: colors.goldMuted } : null]}>{entry.score}</Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+
+                    <View style={styles.lbList}>
+                      {centerRest.map((entry, i) => {
+                        const me = isMeEntry(entry);
+                        return (
+                          <View key={entry.attempt_id || `${entry.user_id}-${i}`} style={[styles.lbRow, me ? styles.lbMeRow : null]}>
+                            <Text style={[styles.lbRank, me ? { color: colors.blueLight } : null]}>{entry.rank}</Text>
+                            <Avatar
+                              letter={initialOf(entry.name)}
+                              uri={entry.avatar_url || entry.avatarUrl}
+                              size={34}
+                              fontSize={13}
+                              background={AVATAR_COLORS[i % AVATAR_COLORS.length]}
+                            />
+                            <View style={styles.lbRowText}>
+                              <Text style={styles.lbRowName} numberOfLines={1}>
+                                {entry.name}
+                                {me ? <Text style={styles.lbMeTag}> · Siz</Text> : null}
+                              </Text>
+                              <Text style={styles.lbRowSub} numberOfLines={1}>
+                                {minutes(entry.time_spent)}
+                              </Text>
+                            </View>
+                            <Text style={[styles.lbRowScore, me ? { color: colors.text } : null]}>{entry.score}</Text>
+                          </View>
+                        );
+                      })}
+                      {!myCenterEntry && user && (stats.total_attempts || 0) > 0 ? (
+                        <>
+                          <Text style={styles.lbEllipsis}>···</Text>
+                          <View style={[styles.lbRow, styles.lbMeRow]}>
+                            <Text style={[styles.lbRank, { color: colors.blueLight }]}>—</Text>
+                            <Avatar
+                              letter={initialOf(user?.full_name || user?.name)}
+                              uri={user?.avatar_url}
+                              size={34}
+                              fontSize={13}
+                              background={colors.blueDeep}
+                            />
+                            <View style={styles.lbRowText}>
+                              <Text style={styles.lbRowName} numberOfLines={1}>
+                                {user?.full_name || user?.name || 'Siz'}
+                                <Text style={styles.lbMeTag}> · Siz</Text>
+                              </Text>
+                              <Text style={styles.lbRowSub} numberOfLines={1}>
+                                Markaz reytingida hali yo'q
+                              </Text>
+                            </View>
+                            <Text style={[styles.lbRowScore, { color: colors.text }]}>
+                              {stats.best_score || stats.average_score || '—'}
+                            </Text>
+                          </View>
+                        </>
+                      ) : null}
+                    </View>
+                  </>
+                )}
+              </>
+            )}
+          </>
+        )}
 
         {hasAnalysis ? (
           <>
@@ -329,44 +794,21 @@ export default function ResultsScreen({ navigation }) {
           </>
         ) : null}
 
-        {results.length ? (
-          <>
-            <Text style={styles.sectionTitle}>So'nggi natijalar</Text>
-            <View style={styles.historyList}>
-              {results.slice(0, 8).map((r) => (
-                <Card key={r.id} style={styles.historyCard}>
-                  <IconBox size={30} radius={15} background={tints.green14}>
-                    <CheckIcon size={14} />
-                  </IconBox>
-                  <View style={styles.historyText}>
-                    <Text style={styles.historyTitle} numberOfLines={1}>
-                      {r.olympiad_title || r.olympiad?.title || 'Tadbir'}
-                    </Text>
-                    <Text style={styles.historySub}>
-                      {r.score} ball · {r.correct_count}/{r.total_questions} to'g'ri
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    style={styles.practiceBtn}
-                    disabled={practicingId != null}
-                    onPress={() => handlePractice(r)}
-                  >
-                    {practicingId === r.id ? (
-                      <ActivityIndicator size="small" color={colors.blue} />
-                    ) : (
-                      <>
-                        <RepeatIcon size={14} color={colors.blue} />
-                        <Text style={styles.practiceBtnText}>Mashq</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                </Card>
-              ))}
-            </View>
-          </>
-        ) : null}
       </ScrollView>
+
+      {/* Nav Bar tepasida global reyting o'rni — doim ko'rinadi */}
+      <View style={[styles.rankDock, { bottom: rankDockBottom }]} pointerEvents="none">
+        <View style={styles.rankDockInner}>
+          <CrownIcon size={14} />
+          <Text style={styles.rankDockText} numberOfLines={1}>
+            Global reyting{' '}
+            <Text style={styles.rankDockStrong}>
+              {globalRankLabel ? `#${globalRankLabel}` : '—'}
+            </Text>
+            {period === 1 ? ' · bu hafta' : ''}
+          </Text>
+        </View>
+      </View>
     </SafeAreaView>
   );
 }
@@ -445,6 +887,245 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     padding: 24,
     alignItems: 'center',
   },
+  rankCompare: {
+    fontSize: 11.5,
+    fontFamily: FONTS.semibold,
+    color: colors.textSecondary,
+    marginTop: 6,
+    lineHeight: 16,
+  },
+  rankCompareStrong: {
+    color: colors.text,
+    fontFamily: FONTS.bold,
+  },
+  scopeControl: {
+    marginTop: 10,
+  },
+  periodRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  centerSectionHint: {
+    marginTop: 12,
+    fontSize: 11.5,
+    fontFamily: FONTS.extrabold,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  centerChipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  centerNameChip: {
+    maxWidth: '100%',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+  },
+  centerNameChipActive: {
+    borderColor: colors.blue,
+    backgroundColor: tints.blue14,
+  },
+  centerNameChipText: {
+    fontSize: 13,
+    fontFamily: FONTS.bold,
+    color: colors.textSecondary,
+  },
+  centerNameChipTextActive: {
+    fontFamily: FONTS.extrabold,
+    color: colors.blueLight,
+  },
+  joinCenterBtn: {
+    marginTop: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 12,
+    backgroundColor: tints.blue14,
+    borderWidth: 1,
+    borderColor: colors.blue,
+  },
+  joinCenterBtnText: {
+    fontSize: 13,
+    fontFamily: FONTS.extrabold,
+    color: colors.blueLight,
+    textAlign: 'center',
+  },
+  myRankText: {
+    fontSize: 12,
+    fontFamily: FONTS.semibold,
+    color: colors.textSecondary,
+    marginTop: 12,
+  },
+  myRankStrong: {
+    fontFamily: FONTS.extrabold,
+    color: colors.text,
+  },
+  rankDock: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    alignItems: 'center',
+    zIndex: 20,
+  },
+  rankDockInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: tints.goldBorder35 || colors.borderStrong,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    elevation: 12,
+    maxWidth: '100%',
+  },
+  rankDockText: {
+    fontSize: 12.5,
+    fontFamily: FONTS.bold,
+    color: colors.textSecondary,
+    flexShrink: 1,
+  },
+  rankDockStrong: {
+    fontFamily: FONTS.extrabold,
+    color: colors.gold,
+    fontSize: 13.5,
+  },
+  lbEmptyWrap: {
+    marginTop: 30,
+    alignItems: 'center',
+  },
+  lbPodium: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 20,
+  },
+  lbPodiumCol: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 8,
+  },
+  lbWinnerWrap: {
+    marginTop: 14,
+  },
+  lbWinnerAvatar: {
+    shadowColor: colors.gold,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    elevation: 8,
+  },
+  lbCrown: {
+    position: 'absolute',
+    top: -14,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  lbPodiumName: {
+    fontSize: 12,
+    fontFamily: FONTS.extrabold,
+    color: colors.text,
+  },
+  lbPodiumBlock: {
+    width: '100%',
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 14,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  lbWinnerBlock: {
+    backgroundColor: tints.gold10,
+    borderColor: tints.goldBorder35,
+  },
+  lbPodiumRank: {
+    fontSize: 20,
+    fontFamily: FONTS.extrabold,
+  },
+  lbPodiumScore: {
+    fontSize: 11,
+    fontFamily: FONTS.bold,
+    color: colors.textSecondary,
+  },
+  lbList: {
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+    paddingTop: 14,
+    marginTop: 20,
+  },
+  lbRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+  },
+  lbMeRow: {
+    borderWidth: 1.5,
+    borderColor: colors.blue,
+    backgroundColor: tints.blue08,
+  },
+  lbRank: {
+    width: 24,
+    textAlign: 'center',
+    fontSize: 13,
+    fontFamily: FONTS.extrabold,
+    color: colors.textSecondary,
+  },
+  lbRowText: {
+    flex: 1,
+  },
+  lbRowName: {
+    fontSize: 13.5,
+    fontFamily: FONTS.extrabold,
+    color: colors.text,
+  },
+  lbMeTag: {
+    fontSize: 10,
+    fontFamily: FONTS.extrabold,
+    color: colors.blueLight,
+  },
+  lbRowSub: {
+    fontSize: 11,
+    fontFamily: FONTS.semibold,
+    color: colors.textSecondary,
+  },
+  lbRowScore: {
+    fontSize: 13,
+    fontFamily: FONTS.extrabold,
+    color: colors.textBody,
+  },
+  lbEllipsis: {
+    textAlign: 'center',
+    fontSize: 12,
+    fontFamily: FONTS.bold,
+    color: colors.textMuted,
+    paddingVertical: 2,
+  },
   emptyText: {
     fontSize: 13,
     fontFamily: FONTS.semibold,
@@ -457,68 +1138,6 @@ const makeStyles = (colors, tints) => StyleSheet.create({
     color: colors.text,
     marginTop: 22,
     marginBottom: 10,
-  },
-  sectionsCard: {
-    padding: 16,
-    gap: 12,
-  },
-  sectionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  sectionName: {
-    fontSize: 12.5,
-    fontFamily: FONTS.bold,
-    color: colors.textBody,
-  },
-  sectionValue: {
-    fontSize: 12.5,
-    fontFamily: FONTS.extrabold,
-    color: colors.text,
-  },
-  sectionBar: {
-    marginTop: 6,
-  },
-  historyList: {
-    gap: 8,
-  },
-  historyCard: {
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  historyText: {
-    flex: 1,
-  },
-  historyTitle: {
-    fontSize: 13.5,
-    fontFamily: FONTS.extrabold,
-    color: colors.text,
-  },
-  historySub: {
-    fontSize: 11.5,
-    fontFamily: FONTS.semibold,
-    color: colors.textSecondary,
-  },
-  practiceBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    minWidth: 78,
-    height: 34,
-    paddingHorizontal: 10,
-    borderRadius: 11,
-    backgroundColor: tints.blue10,
-    borderWidth: 1,
-    borderColor: tints.blueBorder30,
-  },
-  practiceBtnText: {
-    fontSize: 12,
-    fontFamily: FONTS.extrabold,
-    color: colors.blue,
   },
   analysisList: {
     gap: 8,

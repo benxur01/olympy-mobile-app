@@ -1,7 +1,18 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
 import { FONTS } from '../constants/typography';
 import { useTheme } from '../services/ThemeContext';
+import { API_BASE_URL } from '../services/config';
+
+// Backend avatar_url ba'zan absolyut (Cloudinary/S3), ba'zan nisbiy
+// (/media/avatars/...) — Image uchun to'liq URL kerak.
+export function resolveAvatarUri(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  const s = raw.trim();
+  if (!s) return null;
+  if (/^https?:\/\//i.test(s) || s.startsWith('data:') || s.startsWith('file:')) return s;
+  return `${API_BASE_URL}${s.startsWith('/') ? '' : '/'}${s}`;
+}
 
 export default function Avatar({
   letter,
@@ -16,6 +27,13 @@ export default function Avatar({
 }) {
   const { colors } = useTheme();
   const styles = makeStyles();
+  const resolved = resolveAvatarUri(uri);
+  const [imgFailed, setImgFailed] = useState(false);
+  useEffect(() => {
+    setImgFailed(false);
+  }, [resolved]);
+  const showImage = !!resolved && !imgFailed;
+
   return (
     <View
       style={[
@@ -30,8 +48,13 @@ export default function Avatar({
         style,
       ]}
     >
-      {uri ? (
-        <Image source={{ uri }} style={styles.image} resizeMode="cover" />
+      {showImage ? (
+        <Image
+          source={{ uri: resolved }}
+          style={styles.image}
+          resizeMode="cover"
+          onError={() => setImgFailed(true)}
+        />
       ) : (
         <Text style={[styles.letter, { color: color || colors.white, fontSize }]}>{letter}</Text>
       )}

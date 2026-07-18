@@ -89,7 +89,7 @@ export default function MistakesScreen({ navigation }) {
           <EmptyState
             icon={<RepeatIcon size={24} color={colors.blueLight} />}
             title="Xatolar yo'q"
-            message="Ajoyib! Hali noto'g'ri javob bermagansiz. Tadbirlarda qatnashishda davom eting."
+            message="Ajoyib! Hali noto'g'ri javob bermagansiz. Musobaqalarda qatnashishda davom eting."
           />
         ) : (
           <>

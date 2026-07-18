@@ -37,7 +37,7 @@ export default function DuelInviteScreen({ navigation }) {
   );
 
   const opponents = useMemo(() => {
-    const raw = data?.entries || (Array.isArray(data) ? data : []);
+    const raw = data?.entries || data?.results || (Array.isArray(data) ? data : []);
     const seen = new Set();
     const out = [];
     for (const e of raw) {

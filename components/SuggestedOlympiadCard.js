@@ -8,7 +8,7 @@ import { useTheme } from '../services/ThemeContext';
 import { FONTS } from '../constants/typography';
 
 // OB4. Siz uchun olimpiada taklifi. Web: pages/RetentionWidgets.jsx (456-482).
-// Mobil'da alohida olimpiada obyektini qidirmaymiz — shunchaki "Tadbirlar"
+// Mobil'da alohida olimpiada obyektini qidirmaymiz — shunchaki "Musobaqalar"
 // ro'yxatiga o'tamiz.
 export default function SuggestedOlympiadCard({ navigation }) {
   const { colors, tints } = useTheme();
@@ -33,7 +33,7 @@ export default function SuggestedOlympiadCard({ navigation }) {
           radius={11}
           fontSize={12.5}
           style={styles.btn}
-          onPress={() => navigation.navigate('Tadbirlar')}
+          onPress={() => navigation.navigate('Musobaqalar')}
         />
       ) : null}
     </Card>

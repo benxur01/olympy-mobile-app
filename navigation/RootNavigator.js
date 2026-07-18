@@ -23,6 +23,8 @@ import DailyQuestionsScreen from '../screens/DailyQuestionsScreen';
 import LeaderboardScreen from '../screens/LeaderboardScreen';
 import ShopScreen from '../screens/ShopScreen';
 import PremiumScreen from '../screens/PremiumScreen';
+import MyCompetitionsScreen from '../screens/MyCompetitionsScreen';
+import MyCertificatesScreen from '../screens/MyCertificatesScreen';
 import CertVerifyScreen from '../screens/CertVerifyScreen';
 import AiChatScreen from '../screens/AiChatScreen';
 import AnalyticsScreen from '../screens/AnalyticsScreen';
@@ -140,6 +142,8 @@ export default function RootNavigator() {
         <Stack.Screen name="Leaderboard" component={LeaderboardScreen} />
         <Stack.Screen name="Shop" component={ShopScreen} />
         <Stack.Screen name="Premium" component={PremiumScreen} />
+        <Stack.Screen name="MyCompetitions" component={MyCompetitionsScreen} />
+        <Stack.Screen name="MyCertificates" component={MyCertificatesScreen} />
         <Stack.Screen name="CertVerify" component={CertVerifyScreen} />
         <Stack.Screen name="AiChat" component={AiChatScreen} />
         <Stack.Screen name="Analytics" component={AnalyticsScreen} />
