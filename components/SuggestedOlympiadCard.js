@@ -33,7 +33,13 @@ export default function SuggestedOlympiadCard({ navigation }) {
           radius={11}
           fontSize={12.5}
           style={styles.btn}
-          onPress={() => navigation.navigate('Musobaqalar')}
+          onPress={() => {
+            try {
+              navigation.navigate('Musobaqalar');
+            } catch (e) {
+              navigation.navigate('StudentTabs', { screen: 'Musobaqalar' });
+            }
+          }}
         />
       ) : null}
     </Card>

@@ -42,6 +42,25 @@ import {
 
 const asArray = (data) => (Array.isArray(data) ? data : data?.results || data?.entries || []);
 
+// Tab navigator ichidan root stack ekraniga o'tish (Premium kabi package).
+// Ba'zi holatlarda to'g'ridan-to'g'ri navigate ishlamaydi — parent orqali urinamiz.
+const openStackScreen = (navigation, name, params) => {
+  if (!navigation?.navigate) return;
+  // Avval eng yuqori parent stack (RootNavigator) ni topamiz —
+  // MyCompetitions / MyCertificates / Premium shu yerda ro'yxatdan o'tgan.
+  let nav = navigation;
+  let root = navigation;
+  while (nav?.getParent?.()) {
+    nav = nav.getParent();
+    if (nav) root = nav;
+  }
+  if (root?.navigate) {
+    root.navigate(name, params);
+    return;
+  }
+  navigation.navigate(name, params);
+};
+
 const formatWhen = (iso) => {
   if (!iso) return '';
   const d = new Date(iso);
@@ -266,7 +285,7 @@ export default function StudentHomeScreen({ navigation }) {
           <TouchableOpacity
             activeOpacity={0.85}
             style={styles.kpiTouch}
-            onPress={() => navigation.navigate('MyCompetitions')}
+            onPress={() => openStackScreen(navigation, 'MyCompetitions')}
           >
             <Card radius={18} style={styles.kpiCard}>
               <IconBox size={32} radius={10} background={tints.green14}>
@@ -279,7 +298,7 @@ export default function StudentHomeScreen({ navigation }) {
           <TouchableOpacity
             activeOpacity={0.85}
             style={styles.kpiTouch}
-            onPress={() => navigation.navigate('MyCertificates')}
+            onPress={() => openStackScreen(navigation, 'MyCertificates')}
           >
             <Card radius={18} style={styles.kpiCard}>
               <IconBox size={32} radius={10} background={tints.purple16}>
