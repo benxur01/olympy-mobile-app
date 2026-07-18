@@ -47,7 +47,9 @@ export default function ProctoringScreen() {
   const { user } = useAuth();
   // Sof menejer/direktor (teacher a'zoligisiz) uchun /api/me/teacher/olympiads/
   // bo'sh qaytaradi — bunday holda faol tadbirni markaz statistikasidan topamiz.
-  const isManager = ['manager', 'owner', 'director'].some((r) => (user?.roles || []).includes(r));
+  const isManager = ['manager', 'owner', 'director'].some((r) =>
+    Array.isArray(user?.roles) ? user.roles.includes(r) : false
+  );
   const [query, setQuery] = useState('');
   // Faol tadbir countdown'i uchun soat — faqat active topilgach yoqiladi.
   const [now, setNow] = useState(Date.now());

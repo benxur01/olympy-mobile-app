@@ -175,12 +175,18 @@ export default function ProfileScreen({ navigation }) {
   // va referral faqat o'quvchida mavjud. Non-student uchun student API'larni
   // umuman chaqirmaymiz va faqat umumiy bo'limlarni (tema, parol, 2FA,
   // maxfiylik, chiqish) ko'rsatamiz.
-  const isStudent = (user?.roles || []).includes('student');
+  const isStudent = Array.isArray(user?.roles)
+    ? user.roles.includes('student')
+    : false;
   const [tab, setTab] = useState(isStudent ? 'Sertifikatlar' : 'Sozlamalar');
   const [certImage, setCertImage] = useState(null);
   const [certLoading, setCertLoading] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [telegramLinking, setTelegramLinking] = useState(false);
+  // Hooks Rules: early return (loading/error) dan OLDIN e'lon qilinadi.
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const telegramPollRef = useRef(null);
 
   const { data, loading, error, reload, refresh } = useFetch(async () => {
@@ -407,10 +413,6 @@ export default function ProfileScreen({ navigation }) {
       Alert.alert('Xatolik', "Havolani ochib bo'lmadi.")
     );
   };
-
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deletePassword, setDeletePassword] = useState('');
-  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const confirmDelete = () => {
     setDeletePassword('');

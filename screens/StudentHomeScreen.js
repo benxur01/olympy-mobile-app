@@ -163,9 +163,8 @@ export default function StudentHomeScreen({ navigation }) {
     }
   };
 
-  if (loading) return <LoadingState message="Ma'lumotlar yuklanmoqda…" />;
-  if (error && !data) return <ErrorState onRetry={reload} />;
-
+  // Hooks Rules: early return'dan OLDIN barcha hook'lar chaqirilishi kerak.
+  // Countdown hisoblash data hali null bo'lsa ham xavfsiz (bo'sh qiymatlar).
   const stats = data?.stats || {};
   const streak = data?.streak || {};
   const olympiads = data?.olympiads || [];
@@ -213,6 +212,9 @@ export default function StudentHomeScreen({ navigation }) {
       (eventEndTs != null && eventRemainSec > 0);
     setNeedClock(!!wantsClock);
   }, [goalResetTs, goalRemainSec, eventEndTs, eventRemainSec]);
+
+  if (loading) return <LoadingState message="Ma'lumotlar yuklanmoqda…" />;
+  if (error && !data) return <ErrorState onRetry={reload} />;
 
   const confirmLogout = async () => {
     await logout();

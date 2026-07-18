@@ -12,6 +12,14 @@ export function centerIdForUser(user) {
   return null;
 }
 
+/** Backend JSONField odatda list, lekin himoya uchun arrayga normalizatsiya. */
+export function normalizeRoles(user) {
+  const raw = user?.roles;
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string' && raw) return [raw];
+  return [];
+}
+
 /** Default (ustuvor) shell — login/splash yo'nalishi. */
 export function routeForUser(user) {
   if (!user) return 'Login';
@@ -26,7 +34,7 @@ export function routeForUser(user) {
  */
 export function availableShellsForUser(user) {
   if (!user) return [];
-  const roles = user.roles || [];
+  const roles = normalizeRoles(user);
   const has = (r) => roles.includes(r);
   const shells = [];
 

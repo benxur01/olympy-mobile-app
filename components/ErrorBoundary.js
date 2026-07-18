@@ -17,10 +17,10 @@ export default class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, info) {
-    if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      // eslint-disable-next-line no-console
-      console.error('[ErrorBoundary]', error, info?.componentStack);
-    }
+    // Doim logga yozamiz (dev bo'lmasa ham) — aks holda production'da xato
+    // sababini adb logcat orqali ham bilib bo'lmaydi.
+    // eslint-disable-next-line no-console
+    console.error('[ErrorBoundary]', error, info?.componentStack);
   }
 
   handleRetry = () => {

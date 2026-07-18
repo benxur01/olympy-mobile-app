@@ -50,7 +50,7 @@ export default function CodeReviewScreen({ route }) {
   // Sof menejerda teacher olimpiadalari bo'sh — bunday holda markaz
   // statistikasidagi natijasi bor tadbirlarni ishlatamiz (EssayGradingScreen
   // naqshi). Teacher oqimiga ta'sir qilmaydi.
-  const isManager = (user?.roles || []).includes('manager');
+  const isManager = Array.isArray(user?.roles) && user.roles.includes('manager');
   const { data, loading, refreshing, error, reload, refresh } = useFetch(async () => {
     // Ma'lum bir olimpiada berilgan bo'lsa (o'qituvchi tadbir detalidan) —
     // faqat o'shaning kod javoblarini olamiz, boshqalarini yig'maymiz.

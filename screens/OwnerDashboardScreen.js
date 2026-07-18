@@ -170,6 +170,10 @@ export default function OwnerDashboardScreen({ navigation }) {
   const [createOrgPicker, setCreateOrgPicker] = useState(false);
   const [createRegionPicker, setCreateRegionPicker] = useState(false);
   const [createDistrictPicker, setCreateDistrictPicker] = useState(false);
+  // Hooks Rules: loading/error early return dan OLDIN e'lon qilinadi.
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const centers = data?.centers || [];
   const center = data?.center;
@@ -314,10 +318,6 @@ export default function OwnerDashboardScreen({ navigation }) {
       },
     ]);
   };
-
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deletePassword, setDeletePassword] = useState('');
-  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const confirmDelete = () => {
     setDeletePassword('');

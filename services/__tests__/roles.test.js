@@ -7,6 +7,7 @@ const {
   canAccessRoute,
   allowedRoutesForUser,
   availableShellsForUser,
+  normalizeRoles,
   PUBLIC_ROUTES,
 } = require('../roles');
 
@@ -65,5 +66,10 @@ assert(PUBLIC_ROUTES.has('CertVerify'), 'cert public');
 const ownerAllowed = allowedRoutesForUser({ roles: ['owner'] });
 assert(ownerAllowed.has('OwnerDashboard'), 'owner dashboard allowed');
 assert(!ownerAllowed.has('Admin'), 'owner no admin');
+
+// roles normalization — object/string must not throw
+assert(Array.isArray(normalizeRoles({ roles: {} })), 'roles {} → array');
+assert(normalizeRoles({ roles: 'student' })[0] === 'student', 'roles string');
+assert(routeForUser({ roles: {}, onboarding_completed: true }) === 'StudentTabs', 'roles {} shell');
 
 console.log('roles.test.js: OK');

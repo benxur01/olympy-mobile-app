@@ -35,7 +35,7 @@ export default function EssayGradingScreen() {
   // Sof menejerda teacher olimpiadalari bo'sh — bunday holda markaz
   // statistikasidagi natijasi bor tadbirlarni ishlatamiz (so'rovlar sonini
   // cheklab). Teacher oqimiga ta'sir qilmaydi.
-  const isManager = (user?.roles || []).includes('manager');
+  const isManager = Array.isArray(user?.roles) && user.roles.includes('manager');
   const { data, loading, error, reload } = useFetch(async () => {
     const olyData = await teacherApi.myOlympiads().then((r) => r.data).catch(() => null);
     let olympiads = asResults(olyData);

@@ -99,6 +99,11 @@ export default function RootNavigator() {
           navigationRef.resetRoot({ index: 0, routes: [{ name: home }] });
         }
       }
+    } catch (e) {
+      // resetRoot navigatsiya hali tayyor bo'lmagan holatda xato tashlashi
+      // mumkin — bu butun ilovani ErrorBoundary'ga yiqitmasligi kerak.
+      // eslint-disable-next-line no-console
+      console.error('[enforceAccess]', e);
     } finally {
       // microtask — ketma-ket state o'zgarishlarida loopdan saqlaymiz
       setTimeout(() => {
