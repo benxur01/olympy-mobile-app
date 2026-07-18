@@ -6,7 +6,13 @@ import { API_BASE_URL, API_TIMEOUT } from './config';
 const client = axios.create({
   baseURL: API_BASE_URL,
   timeout: API_TIMEOUT,
-  headers: { 'Content-Type': 'application/json' },
+  headers: {
+    'Content-Type': 'application/json',
+    // Backend production'da JWT ni faqat HttpOnly cookie bilan qaytaradi.
+    // RN cookie jar ishonchli emas — shu header bilan token/refresh body'da
+    // keladi va SecureStore/AsyncStorage ga saqlanadi (auto-login).
+    'X-Olympy-Auth-Storage': 'bearer',
+  },
 });
 
 let accessToken = null;
@@ -44,10 +50,14 @@ async function refreshAccessToken() {
     const { data } = await axios.post(
       `${API_BASE_URL}/api/auth/token/refresh/`,
       { refresh: refreshToken },
-      { timeout: API_TIMEOUT }
+      {
+        timeout: API_TIMEOUT,
+        headers: { 'X-Olympy-Auth-Storage': 'bearer' },
+      }
     );
     const newToken = data.token || data.access;
     const newRefresh = data.refresh || refreshToken;
+    if (!newToken) throw new Error('refresh_no_token');
     setTokens({ token: newToken, refresh: newRefresh });
     if (authHandlers.onRefresh) {
       try {

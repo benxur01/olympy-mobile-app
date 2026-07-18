@@ -18,17 +18,28 @@ export function AuthProvider({ children }) {
   const [sessionError, setSessionError] = useState(null);
 
   const persistTokens = async (token, refresh) => {
-    setTokens({ token, refresh });
-    if (token) {
-      await secureSet(TOKEN_KEY, token);
+    const access = token || null;
+    const ref = refresh || null;
+    setTokens({ token: access, refresh: ref });
+    if (access) {
+      await secureSet(TOKEN_KEY, access);
     } else {
       await secureDelete(TOKEN_KEY);
     }
-    if (refresh) {
-      await secureSet(REFRESH_KEY, refresh);
+    if (ref) {
+      await secureSet(REFRESH_KEY, ref);
     } else {
       await secureDelete(REFRESH_KEY);
     }
+  };
+
+  /** Login/register javobidan token juftligini o'qiydi (field nomlari farq qilishi mumkin). */
+  const tokensFromAuthPayload = (data) => {
+    if (!data || typeof data !== 'object') return { token: null, refresh: null };
+    return {
+      token: data.token || data.access || null,
+      refresh: data.refresh || null,
+    };
   };
 
   const loadMe = useCallback(async () => {
@@ -139,7 +150,19 @@ export function AuthProvider({ children }) {
     if (data?.requires_2fa) {
       return { requires2fa: true };
     }
-    await persistTokens(data.token, data.refresh);
+    const { token, refresh } = tokensFromAuthPayload(data);
+    if (!token) {
+      // Header yo'q yoki backend body'da token bermadi — sessiya saqlanmaydi.
+      throw Object.assign(new Error('login_no_token'), {
+        response: {
+          data: {
+            detail:
+              "Server sessiya tokenini qaytarmadi. Ilovani yangilang yoki keyinroq urinib ko'ring.",
+          },
+        },
+      });
+    }
+    await persistTokens(token, refresh);
     const me = data.user || (await loadMe());
     setUser(me);
     registerPushToken();
@@ -148,7 +171,18 @@ export function AuthProvider({ children }) {
 
   const register = async (payload) => {
     const { data } = await authApi.register(payload);
-    await persistTokens(data.token, data.refresh);
+    const { token, refresh } = tokensFromAuthPayload(data);
+    if (!token) {
+      throw Object.assign(new Error('register_no_token'), {
+        response: {
+          data: {
+            detail:
+              "Server sessiya tokenini qaytarmadi. Ilovani yangilang yoki keyinroq urinib ko'ring.",
+          },
+        },
+      });
+    }
+    await persistTokens(token, refresh);
     const me = data.user || (await loadMe());
     setUser(me);
     registerPushToken();
@@ -160,7 +194,18 @@ export function AuthProvider({ children }) {
   // qaytaradi, shuning uchun tokenlarni xuddi register kabi saqlaymiz.
   const registerOrganization = async (payload) => {
     const { data } = await authApi.registerOrganization(payload);
-    await persistTokens(data.token, data.refresh);
+    const { token, refresh } = tokensFromAuthPayload(data);
+    if (!token) {
+      throw Object.assign(new Error('register_org_no_token'), {
+        response: {
+          data: {
+            detail:
+              "Server sessiya tokenini qaytarmadi. Ilovani yangilang yoki keyinroq urinib ko'ring.",
+          },
+        },
+      });
+    }
+    await persistTokens(token, refresh);
     const me = data.user || (await loadMe());
     setUser(me);
     registerPushToken();

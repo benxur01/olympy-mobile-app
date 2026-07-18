@@ -42,23 +42,21 @@ export async function secureSet(key, value) {
   if (value == null) {
     return secureDelete(key);
   }
+  const str = String(value);
   let secureOk = false;
   try {
     if (await secureAvailable()) {
-      await SecureStore.setItemAsync(key, String(value));
+      await SecureStore.setItemAsync(key, str);
       secureOk = true;
     }
   } catch (e) {
     secureOk = false;
   }
-  // SecureStore yozilganda AsyncStorage'dagi eski nusxani tozalaymiz
-  // (oldingi versiyadan migratsiya).
+  // Dual-write: SecureStore + AsyncStorage. SecureStore ba'zi qurilmalarda
+  // (OTA/update, keystore) o'qilmasligi mumkin — AsyncStorage zaxira sifatida
+  // qoladi, shunda sessiya app qayta ochilganda yo'qolmaydi.
   try {
-    if (secureOk) {
-      await AsyncStorage.removeItem(key);
-    } else {
-      await AsyncStorage.setItem(key, String(value));
-    }
+    await AsyncStorage.setItem(key, str);
   } catch (e) {
     if (!secureOk) throw e;
   }
